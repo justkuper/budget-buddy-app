@@ -1,76 +1,64 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useTranslation } from 'react-i18next'
-import { useAuth } from '../../contexts/AuthContext'
+import { useAuth, apiFetch } from '../../contexts/AuthContext'
 import './Auth.css'
 
-async function sendCode(method, contact) {
-  const res = await fetch('/api/send-2fa-code', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method, contact }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Failed to send code')
-  return data.token // signed token used for verification
-}
-
-async function verifyCode(token, code) {
-  const res = await fetch('/api/verify-2fa-code', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, code }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Incorrect code')
-  return true
-}
-
+/**
+ * TwoFactorPage
+ *
+ * isSetup=false  (route /auth/2fa)
+ *   User just logged in and Cognito issued a SOFTWARE_TOKEN_MFA challenge.
+ *   They enter their 6-digit TOTP code from Google Authenticator / Authy.
+ *
+ * isSetup=true   (route /auth/2fa-setup)
+ *   User is enabling TOTP for the first time.
+ *   Step 1: Backend issues a QR code URI → show QR image + secret.
+ *   Step 2: User scans with authenticator app and enters the first code.
+ *   Step 3: Backend verifies and enables MFA.
+ */
 export default function TwoFactorPage({ isSetup = false }) {
-  const { t } = useTranslation()
-  const { confirmMFA, signOut, user } = useAuth()
+  const { confirmMFA, signOut, user, getAccessToken } = useAuth()
   const navigate = useNavigate()
 
-  // Steps: 'choose' → 'contact' → 'code' → 'success'
-  const [step, setStep]         = useState(isSetup ? 'choose' : 'code')
-  const [method, setMethod]     = useState('email')   // 'email' | 'sms'
-  const [contact, setContact]   = useState(user?.email || '')
-  const [sending, setSending]   = useState(false)
-  const [verifyToken, setVerifyToken] = useState(null) // HMAC token returned from server
-  const [code, setCode]         = useState(['', '', '', '', '', ''])
-  const [error, setError]       = useState('')
-  const [loading, setLoading]   = useState(false)
+  // ── Shared state ────────────────────────────────────────────────────────
+  const [code,    setCode]    = useState(['', '', '', '', '', ''])
+  const [error,   setError]   = useState('')
+  const [loading, setLoading] = useState(false)
   const inputs = useRef([])
+
+  // ── Setup-mode state ─────────────────────────────────────────────────────
+  const [step,       setStep]       = useState(isSetup ? 'loading' : 'code')
+  const [secretCode, setSecretCode] = useState('')
+  const [qrUri,      setQrUri]      = useState('')
+  const [mfaSession, setMfaSession] = useState(null)
+
+  // ── Fetch TOTP secret on mount (setup mode only) ─────────────────────────
+  useEffect(() => {
+    if (!isSetup) {
+      inputs.current[0]?.focus()
+      return
+    }
+    const token = getAccessToken()
+    if (!token) { navigate('/auth/login'); return }
+
+    apiFetch('auth/mfa/setup', { method: 'POST' })
+      .then(({ secretCode: sc, qrUri: uri, session: sess }) => {
+        setSecretCode(sc)
+        setQrUri(uri)
+        setMfaSession(sess)
+        setStep('scan')
+      })
+      .catch((err) => {
+        setError(err.message)
+        setStep('scan') // show error in scan step
+      })
+  }, [isSetup])
 
   useEffect(() => {
     if (step === 'code') inputs.current[0]?.focus()
   }, [step])
 
-  // ── Step 1: choose method ──────────────────────────────────────────────────
-  const handleChooseMethod = (m) => {
-    setMethod(m)
-    setContact(m === 'email' ? (user?.email || '') : '')
-    setStep('contact')
-  }
-
-  // ── Step 2: send the code ──────────────────────────────────────────────────
-  const handleSendCode = async (e) => {
-    e.preventDefault()
-    if (!contact.trim()) return
-    setError('')
-    setSending(true)
-    try {
-      const token = await sendCode(method, contact)
-      setVerifyToken(token)
-      setStep('code')
-    } catch (err) {
-      setError(err.message || 'Failed to send code. Try again.')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  // ── Step 3: verify the code ────────────────────────────────────────────────
+  // ── Code input handlers ──────────────────────────────────────────────────
   const handleChange = (i, val) => {
     if (!/^\d*$/.test(val)) return
     const next = [...code]
@@ -91,23 +79,27 @@ export default function TwoFactorPage({ isSetup = false }) {
     }
   }
 
+  // ── Verify handler (both modes) ──────────────────────────────────────────
   const handleVerify = async () => {
     const full = code.join('')
     if (full.length < 6) return
     setLoading(true)
     setError('')
     try {
-      if (verifyToken) {
-        // Real server-side verification
-        await verifyCode(verifyToken, full)
+      if (isSetup) {
+        // Enable MFA: POST /api/auth/mfa/verify
+        await apiFetch('auth/mfa/verify', {
+          method: 'POST',
+          body: JSON.stringify({ totpCode: full, session: mfaSession }),
+        })
+        setStep('success')
       } else {
-        // Fallback: confirmMFA for login 2FA flow (token already set up on server)
+        // Complete login: AuthContext calls POST /api/auth/login/mfa
         await confirmMFA(full)
+        navigate('/')
       }
-      if (isSetup) setStep('success')
-      else navigate('/')
     } catch (err) {
-      setError(err.message || 'Incorrect code. Please try again.')
+      setError(err.message || 'Incorrect code — try again.')
       setCode(['', '', '', '', '', ''])
       inputs.current[0]?.focus()
     } finally {
@@ -115,11 +107,11 @@ export default function TwoFactorPage({ isSetup = false }) {
     }
   }
 
-  const maskedContact = method === 'email'
-    ? contact.replace(/(.{2}).+(@.+)/, '$1•••$2')
-    : contact.replace(/(\d{3})\d+(\d{2})/, '$1•••••$2')
+  const qrImageUrl = qrUri
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUri)}`
+    : null
 
-  // ── Renders ────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="auth-page">
       <div className="auth-header">
@@ -129,43 +121,53 @@ export default function TwoFactorPage({ isSetup = false }) {
 
       <div className="auth-card">
 
-        {/* ── Choose method ── */}
-        {step === 'choose' && (
+        {/* ── Loading QR ── */}
+        {step === 'loading' && (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)' }}>
+            Setting up authenticator…
+          </div>
+        )}
+
+        {/* ── Scan QR (setup mode) ── */}
+        {step === 'scan' && (
           <>
-            <h2 className="auth-title">Secure your account</h2>
+            <h2 className="auth-title">Set up Authenticator</h2>
             <p className="auth-desc">
-              Two-factor authentication adds an extra layer of security. Choose how you'd like to receive your verification code.
+              Scan this QR code with <strong>Google Authenticator</strong>, <strong>Authy</strong>,
+              or any TOTP app. Then enter the 6-digit code it generates.
             </p>
 
-            <div style={{display:'flex', flexDirection:'column', gap:12, marginBottom:24}}>
-              <button
-                className="twofa-method-btn"
-                onClick={() => handleChooseMethod('email')}
-              >
-                <span style={{fontSize:'1.6rem'}}>📧</span>
-                <div style={{textAlign:'left'}}>
-                  <p style={{fontWeight:700, marginBottom:2}}>Email</p>
-                  <p style={{fontSize:'0.82rem', color:'var(--text-muted)'}}>We'll send a code to your email address</p>
-                </div>
-                <span style={{marginLeft:'auto', color:'var(--text-muted)'}}>›</span>
-              </button>
+            {error && <div className="auth-error">⚠️ {error}</div>}
 
-              <button
-                className="twofa-method-btn"
-                onClick={() => handleChooseMethod('sms')}
-              >
-                <span style={{fontSize:'1.6rem'}}>📱</span>
-                <div style={{textAlign:'left'}}>
-                  <p style={{fontWeight:700, marginBottom:2}}>Text Message (SMS)</p>
-                  <p style={{fontSize:'0.82rem', color:'var(--text-muted)'}}>We'll send a code to your phone number</p>
+            {qrImageUrl && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, margin: '20px 0' }}>
+                <img
+                  src={qrImageUrl}
+                  alt="TOTP QR code"
+                  style={{ width: 200, height: 200, borderRadius: 12, border: '1px solid var(--border)' }}
+                />
+                <div style={{
+                  background: 'var(--bg-input)', borderRadius: 10, padding: '10px 14px',
+                  fontSize: '0.78rem', color: 'var(--text-muted)', wordBreak: 'break-all',
+                  maxWidth: '100%', textAlign: 'center',
+                }}>
+                  <p style={{ marginBottom: 4, fontWeight: 600 }}>Manual entry key:</p>
+                  <code style={{ letterSpacing: 2 }}>{secretCode}</code>
                 </div>
-                <span style={{marginLeft:'auto', color:'var(--text-muted)'}}>›</span>
-              </button>
-            </div>
+              </div>
+            )}
+
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: 8 }}
+              onClick={() => { setCode(['', '', '', '', '', '']); setStep('code') }}
+            >
+              I've scanned it — Next →
+            </button>
 
             <button
               className="btn btn-ghost"
-              style={{width:'100%'}}
+              style={{ marginTop: 8, width: '100%', fontSize: '0.85rem' }}
               onClick={() => navigate('/')}
             >
               Skip for now
@@ -173,66 +175,25 @@ export default function TwoFactorPage({ isSetup = false }) {
           </>
         )}
 
-        {/* ── Enter contact ── */}
-        {step === 'contact' && (
-          <>
-            <button
-              onClick={() => setStep('choose')}
-              style={{background:'none', border:'none', cursor:'pointer', color:'var(--primary)', fontSize:'0.9rem', fontWeight:600, padding:'0 0 16px', display:'block'}}
-            >
-              ← Back
-            </button>
-
-            <h2 className="auth-title">
-              {method === 'email' ? 'Enter your email' : 'Enter your phone number'}
-            </h2>
-            <p className="auth-desc">
-              {method === 'email'
-                ? "We'll send a 6-digit verification code to this address."
-                : "We'll text a 6-digit verification code to this number. Standard rates may apply."}
-            </p>
-
-            {error && <div className="auth-error">⚠️ {error}</div>}
-
-            <form onSubmit={handleSendCode} className="auth-form">
-              <div className="form-group">
-                <label className="form-label">
-                  {method === 'email' ? 'Email address' : 'Phone number'}
-                </label>
-                <input
-                  type={method === 'email' ? 'email' : 'tel'}
-                  value={contact}
-                  onChange={e => setContact(e.target.value)}
-                  placeholder={method === 'email' ? 'hello@example.com' : '+1 (555) 000-0000'}
-                  required
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn btn-primary" disabled={sending || !contact.trim()}>
-                {sending ? 'Sending code…' : 'Send code'}
-              </button>
-            </form>
-          </>
-        )}
-
-        {/* ── Enter code ── */}
+        {/* ── Enter TOTP code (both modes) ── */}
         {step === 'code' && (
           <>
             {isSetup && (
               <button
-                onClick={() => setStep('contact')}
-                style={{background:'none', border:'none', cursor:'pointer', color:'var(--primary)', fontSize:'0.9rem', fontWeight:600, padding:'0 0 16px', display:'block'}}
+                onClick={() => setStep('scan')}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.9rem', fontWeight: 600, padding: '0 0 16px', display: 'block' }}
               >
                 ← Back
               </button>
             )}
 
-            <h2 className="auth-title">Enter verification code</h2>
+            <h2 className="auth-title">
+              {isSetup ? 'Enter the code' : 'Two-factor authentication'}
+            </h2>
             <p className="auth-desc">
               {isSetup
-                ? <>A 6-digit code was sent to <strong>{maskedContact}</strong>. Enter it below to confirm.</>
-                : <>Enter the 6-digit code sent to your verified {method === 'email' ? 'email' : 'phone'}.</>
-              }
+                ? 'Enter the 6-digit code shown in your authenticator app to confirm setup.'
+                : 'Enter the 6-digit code from your authenticator app.'}
             </p>
 
             {error && <div className="auth-error">⚠️ {error}</div>}
@@ -257,36 +218,15 @@ export default function TwoFactorPage({ isSetup = false }) {
               className="btn btn-primary"
               onClick={handleVerify}
               disabled={loading || code.join('').length < 6}
-              style={{marginTop:24}}
+              style={{ marginTop: 24 }}
             >
               {loading ? 'Verifying…' : 'Verify'}
-            </button>
-
-            <button
-              className="btn btn-ghost"
-              style={{marginTop:12, width:'100%', fontSize:'0.88rem'}}
-              onClick={async () => {
-              setError('')
-              setSending(true)
-              try {
-                const token = await sendCode(method, contact)
-                setVerifyToken(token)
-                setCode(['', '', '', '', '', ''])
-                inputs.current[0]?.focus()
-              } catch (err) {
-                setError(err.message || 'Failed to resend code.')
-              } finally {
-                setSending(false)
-              }
-            }}
-            >
-              Didn't receive a code? Resend
             </button>
 
             {!isSetup && (
               <button
                 className="btn btn-ghost"
-                style={{marginTop:4, width:'100%', fontSize:'0.85rem', color:'var(--text-muted)'}}
+                style={{ marginTop: 8, width: '100%', fontSize: '0.85rem', color: 'var(--text-muted)' }}
                 onClick={() => { signOut(); navigate('/auth/login') }}
               >
                 Sign in with a different account
@@ -295,27 +235,18 @@ export default function TwoFactorPage({ isSetup = false }) {
           </>
         )}
 
-        {/* ── Success ── */}
+        {/* ── Success (setup mode) ── */}
         {step === 'success' && (
-          <>
-            <div style={{textAlign:'center', padding:'8px 0 24px'}}>
-              <div style={{fontSize:'3rem', marginBottom:16}}>🎉</div>
-              <h2 className="auth-title" style={{textAlign:'center'}}>2FA Enabled!</h2>
-              <p className="auth-desc" style={{textAlign:'center'}}>
-                Your account is now protected. You'll be asked for a code each time you sign in.
-              </p>
-              <div style={{
-                background:'var(--bg-input)', borderRadius:14, padding:'14px 16px',
-                marginBottom:24, textAlign:'left', border:'1px solid var(--border)'
-              }}>
-                <p style={{fontSize:'0.82rem', color:'var(--text-muted)', marginBottom:4}}>Verification sent to</p>
-                <p style={{fontWeight:700}}>{maskedContact}</p>
-              </div>
-            </div>
+          <div style={{ textAlign: 'center', padding: '8px 0 24px' }}>
+            <div style={{ fontSize: '3rem', marginBottom: 16 }}>🎉</div>
+            <h2 className="auth-title" style={{ textAlign: 'center' }}>2FA Enabled!</h2>
+            <p className="auth-desc" style={{ textAlign: 'center' }}>
+              Your account is now protected. You'll need your authenticator app each time you sign in.
+            </p>
             <button className="btn btn-primary" onClick={() => navigate('/')}>
               Go to dashboard
             </button>
-          </>
+          </div>
         )}
 
       </div>

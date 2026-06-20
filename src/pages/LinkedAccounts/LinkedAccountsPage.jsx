@@ -25,7 +25,7 @@ function AccountCard({ account }) {
   const { t } = useTranslation()
   const isCredit = account.type === 'credit'
   const balance = isCredit ? account.balances.current : (account.balances.available ?? account.balances.current)
-  const currency = account.balances.iso_currency_code || 'USD'
+  const currency = account.balances.isoCurrencyCode || account.balances.iso_currency_code || 'USD'
 
   return (
     <div style={{
@@ -50,7 +50,7 @@ function AccountCard({ account }) {
             {account.mask && <span style={{color: 'var(--text-muted)', fontWeight: 400}}> ••{account.mask}</span>}
           </p>
           <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize'}}>
-            {account.institution?.name} · {account.subtype || account.type}
+            {account.institutionName} · {account.subtype || account.type}
           </p>
         </div>
         <div style={{textAlign: 'right', flexShrink: 0}}>
@@ -77,8 +77,8 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const added = await onSync(item.item_id)
-      setNewCount(added.length)
+      const added = await onSync(item.itemId)
+      setNewCount(Array.isArray(added) ? added.length : 0)
       setTimeout(() => setNewCount(null), 4000)
     } finally {
       setSyncing(false)
@@ -95,10 +95,10 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1.1rem', color: 'white', fontWeight: 800, flexShrink: 0,
         }}>
-          {item.institution?.name?.[0] || '🏦'}
+          {item.institutionName?.[0] || '🏦'}
         </div>
         <div style={{flex: 1}}>
-          <p style={{fontWeight: 700, fontSize: '0.95rem'}}>{item.institution?.name || 'Bank'}</p>
+          <p style={{fontWeight: 700, fontSize: '0.95rem'}}>{item.institutionName || 'Bank'}</p>
           {item.lastRefreshed && (
             <p style={{fontSize: '0.72rem', color: 'var(--text-muted)'}}>
               {t('lastUpdated')}: {new Date(item.lastRefreshed).toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}
@@ -118,7 +118,7 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
             {syncing ? '⟳' : newCount !== null ? `+${newCount} new` : t('sync')}
           </button>
           <button
-            onClick={() => onRemove(item.item_id)}
+            onClick={() => onRemove(item.itemId)}
             style={{
               padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--border)',
               background: 'var(--bg-input)', cursor: 'pointer', fontSize: '0.8rem',
@@ -132,7 +132,7 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
 
       {/* Account cards */}
       {item.accounts.map(account => (
-        <AccountCard key={account.account_id} account={{...account, institution: item.institution}} />
+        <AccountCard key={account.accountId || account.account_id} account={{...account, institutionName: item.institutionName}} />
       ))}
     </div>
   )
@@ -190,7 +190,7 @@ export default function LinkedAccountsPage() {
         {/* Institution groups */}
         {items.map(item => (
           <InstitutionGroup
-            key={item.item_id}
+            key={item.itemId}
             item={item}
             onRemove={removeItem}
             onRefresh={refreshAccounts}
