@@ -363,11 +363,81 @@ select { appearance: none; cursor: pointer; }
 .switch input:checked + .switch-slider { background: var(--primary); }
 .switch input:checked + .switch-slider::before { transform: translateX(22px); }
 
-/* Responsive: wider screens get centered card */
-@media (min-width: 480px) {
+/* ── Tablet: narrow phone centered ───────────────────────── */
+@media (min-width: 480px) and (max-width: 767px) {
   body {
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
     box-shadow: 0 0 60px rgba(0,0,0,0.1);
+  }
+}
+
+/* ── Desktop: sidebar layout ─────────────────────────────── */
+@media (min-width: 768px) {
+  body {
+    max-width: 100%;
+    margin: 0;
+    background: var(--bg);
+  }
+
+  /* App shell: sidebar + main */
+  #root {
+    flex-direction: row;
+    min-height: 100vh;
+  }
+
+  /* Main content area pushed right of sidebar */
+  .desktop-main {
+    margin-left: 240px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+
+  /* Mobile-view mode: center a 480px phone frame */
+  .desktop-main.mobile-view {
+    margin-left: 240px;
+    align-items: center;
+    background: var(--bg);
+    padding: 32px 0;
+  }
+  .desktop-main.mobile-view > * {
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 8px 60px rgba(0,0,0,0.15);
+    border-radius: 28px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    min-height: calc(100vh - 64px);
+  }
+
+  /* Desktop page padding (wider) */
+  .page {
+    padding: 0 32px 40px;
+    max-width: 900px;
+  }
+
+  /* FAB position on desktop */
+  .fab {
+    bottom: 32px;
+    right: 32px;
+  }
+
+  /* Desktop sheet (modal) centers instead of bottom-anchored */
+  .overlay {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 24px;
+    max-width: 480px;
+    padding: 32px;
+  }
+}
+
+/* ── Large desktop: wider content ────────────────────────── */
+@media (min-width: 1280px) {
+  .page {
+    max-width: 1100px;
   }
 }

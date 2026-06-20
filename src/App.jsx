@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import BottomNav from './components/Layout/BottomNav'
+import Sidebar from './components/Layout/Sidebar'
 
 import LoginPage from './pages/Auth/LoginPage'
 import SignupPage from './pages/Auth/SignupPage'
@@ -13,39 +15,83 @@ import ReportsPage from './pages/Reports/ReportsPage'
 import SettingsPage from './pages/Settings/SettingsPage'
 import LinkedAccountsPage from './pages/LinkedAccounts/LinkedAccountsPage'
 
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const handler = e => setIsDesktop(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isDesktop
+}
+
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return <div className="spinner" />
   return user ? children : <Navigate to="/auth/login" replace />
 }
 
+const AppRoutes = () => (
+  <Routes>
+    {/* Auth */}
+    <Route path="/auth/login"     element={<LoginPage />} />
+    <Route path="/auth/signup"    element={<SignupPage />} />
+    <Route path="/auth/2fa"       element={<TwoFactorPage />} />
+    <Route path="/auth/2fa-setup" element={<TwoFactorPage isSetup />} />
+
+    {/* App */}
+    <Route path="/"                element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+    <Route path="/transactions"    element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
+    <Route path="/budget"          element={<PrivateRoute><BudgetPage /></PrivateRoute>} />
+    <Route path="/bills"           element={<PrivateRoute><BillsPage /></PrivateRoute>} />
+    <Route path="/reports"         element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
+    <Route path="/linked-accounts" element={<PrivateRoute><LinkedAccountsPage /></PrivateRoute>} />
+    <Route path="/settings"        element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
+
+    {/* Fallback */}
+    <Route path="*" element={<Navigate to="/" replace />} />
+  </Routes>
+)
+
 function AppLayout() {
   const location = useLocation()
   const isAuth = location.pathname.startsWith('/auth')
+  const isDesktop = useIsDesktop()
+  const [mobileView, setMobileView] = useState(
+    () => localStorage.getItem('bb-mobile-view') === 'true'
+  )
 
+  const toggleMobileView = () => {
+    setMobileView(v => {
+      localStorage.setItem('bb-mobile-view', String(!v))
+      return !v
+    })
+  }
+
+  // Auth pages: full-screen, no nav
+  if (isAuth) {
+    return <AppRoutes />
+  }
+
+  // Mobile: bottom nav
+  if (!isDesktop) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        <AppRoutes />
+        <BottomNav />
+      </div>
+    )
+  }
+
+  // Desktop: sidebar + main
   return (
-    <div style={{display:'flex', flexDirection:'column', minHeight:'100vh'}}>
-      <Routes>
-        {/* Auth */}
-        <Route path="/auth/login"     element={<LoginPage />} />
-        <Route path="/auth/signup"    element={<SignupPage />} />
-        <Route path="/auth/2fa"       element={<TwoFactorPage />} />
-        <Route path="/auth/2fa-setup" element={<TwoFactorPage isSetup />} />
-
-        {/* App */}
-        <Route path="/"                element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-        <Route path="/transactions"    element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
-        <Route path="/budget"          element={<PrivateRoute><BudgetPage /></PrivateRoute>} />
-        <Route path="/bills"           element={<PrivateRoute><BillsPage /></PrivateRoute>} />
-        <Route path="/reports"         element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
-        <Route path="/linked-accounts" element={<PrivateRoute><LinkedAccountsPage /></PrivateRoute>} />
-        <Route path="/settings"        element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-      {!isAuth && <BottomNav />}
-    </div>
+    <>
+      <Sidebar mobileView={mobileView} onToggleMobileView={toggleMobileView} />
+      <div className={`desktop-main${mobileView ? ' mobile-view' : ''}`}>
+        <AppRoutes />
+      </div>
+    </>
   )
 }
 

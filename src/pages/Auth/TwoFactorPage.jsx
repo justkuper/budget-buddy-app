@@ -4,10 +4,26 @@ import { useTranslation } from 'react-i18next'
 import { useAuth } from '../../contexts/AuthContext'
 import './Auth.css'
 
-// Simulates sending a code — in production wire to your SMS/email provider
-function simulateSendCode(method, contact) {
-  console.log(`[2FA] Sending code via ${method} to ${contact}`)
-  return new Promise(res => setTimeout(res, 1200))
+async function sendCode(method, contact) {
+  const res = await fetch('/api/send-2fa-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method, contact }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to send code')
+  return data.token // signed token used for verification
+}
+
+async function verifyCode(token, code) {
+  const res = await fetch('/api/verify-2fa-code', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, code }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Incorrect code')
+  return true
 }
 
 export default function TwoFactorPage({ isSetup = false }) {
@@ -20,6 +36,7 @@ export default function TwoFactorPage({ isSetup = false }) {
   const [method, setMethod]     = useState('email')   // 'email' | 'sms'
   const [contact, setContact]   = useState(user?.email || '')
   const [sending, setSending]   = useState(false)
+  const [verifyToken, setVerifyToken] = useState(null) // HMAC token returned from server
   const [code, setCode]         = useState(['', '', '', '', '', ''])
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -43,10 +60,11 @@ export default function TwoFactorPage({ isSetup = false }) {
     setError('')
     setSending(true)
     try {
-      await simulateSendCode(method, contact)
+      const token = await sendCode(method, contact)
+      setVerifyToken(token)
       setStep('code')
-    } catch {
-      setError('Failed to send code. Try again.')
+    } catch (err) {
+      setError(err.message || 'Failed to send code. Try again.')
     } finally {
       setSending(false)
     }
@@ -79,11 +97,17 @@ export default function TwoFactorPage({ isSetup = false }) {
     setLoading(true)
     setError('')
     try {
-      await confirmMFA(full)
+      if (verifyToken) {
+        // Real server-side verification
+        await verifyCode(verifyToken, full)
+      } else {
+        // Fallback: confirmMFA for login 2FA flow (token already set up on server)
+        await confirmMFA(full)
+      }
       if (isSetup) setStep('success')
       else navigate('/')
-    } catch {
-      setError('Incorrect code. Please try again.')
+    } catch (err) {
+      setError(err.message || 'Incorrect code. Please try again.')
       setCode(['', '', '', '', '', ''])
       inputs.current[0]?.focus()
     } finally {
@@ -241,7 +265,20 @@ export default function TwoFactorPage({ isSetup = false }) {
             <button
               className="btn btn-ghost"
               style={{marginTop:12, width:'100%', fontSize:'0.88rem'}}
-              onClick={() => isSetup ? setStep('contact') : setSending(false)}
+              onClick={async () => {
+              setError('')
+              setSending(true)
+              try {
+                const token = await sendCode(method, contact)
+                setVerifyToken(token)
+                setCode(['', '', '', '', '', ''])
+                inputs.current[0]?.focus()
+              } catch (err) {
+                setError(err.message || 'Failed to resend code.')
+              } finally {
+                setSending(false)
+              }
+            }}
             >
               Didn't receive a code? Resend
             </button>

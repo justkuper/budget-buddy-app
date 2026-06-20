@@ -59,6 +59,17 @@
   object-fit: cover;
 }
 
+/* Hide top-bar theme/lang controls on desktop — sidebar has them */
+@media (min-width: 768px) {
+  .top-bar {
+    padding: 14px 32px;
+  }
+  /* Hide theme/lang buttons — sidebar handles these on desktop */
+  .top-bar .icon-btn:not(:last-child):not([href="/settings"]) {
+    display: none;
+  }
+}
+
 .avatar-initials {
   width: 28px;
   height: 28px;
