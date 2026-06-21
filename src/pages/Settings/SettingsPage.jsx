@@ -143,12 +143,38 @@ function TwoFARow({ navigate, user }) {
 export default function SettingsPage() {
   const { t, i18n } = useTranslation()
   const { isDark, toggleTheme } = useTheme()
-  const { user, signOut } = useAuth()
+  const { user, signOut, updateProfile, linkGoogle, linkFacebook, unlinkProvider } = useAuth()
   const { items, allAccounts } = usePlaid()
   const navigate = useNavigate()
 
+  const [editingProfile, setEditingProfile] = useState(false)
+  const [editName,  setEditName]  = useState(user?.name  || '')
+  const [editEmail, setEditEmail] = useState(user?.email || '')
+  const [editAvatar,setEditAvatar]= useState(user?.avatar|| '')
+
   const handleSignOut = () => {
     signOut()
+    navigate('/auth/login')
+  }
+
+  const handleSaveProfile = () => {
+    updateProfile({ name: editName, email: editEmail, avatar: editAvatar || null })
+    setEditingProfile(false)
+  }
+
+  const googleConnected   = !!user?.providers?.google
+  const facebookConnected = !!user?.providers?.facebook
+
+  // Connect Google from settings
+  const handleConnectGoogle = () => {
+    // Reuse Google login flow — store intent so LoginPage knows to link, not sign in
+    sessionStorage.setItem('bb-link-intent', 'google')
+    navigate('/auth/login')
+  }
+
+  // Connect Facebook from settings
+  const handleConnectFacebook = () => {
+    sessionStorage.setItem('bb-link-intent', 'facebook')
     navigate('/auth/login')
   }
 
@@ -156,25 +182,58 @@ export default function SettingsPage() {
     <div style={{flex:1}}>
       <TopBar title={t('settings')} showBack onBack={() => navigate(-1)} />
       <div className="page">
-        {/* Profile */}
-        <div className="card" style={{marginTop:20, display:'flex', alignItems:'center', gap:16}}>
-          <div style={{
-            width:60, height:60, borderRadius:'50%',
-            background:'linear-gradient(135deg, var(--primary), var(--primary-light))',
-            display:'flex', alignItems:'center', justifyContent:'center',
-            fontSize:'1.5rem', color:'white', fontWeight:800,
-          }}>
-            {(user?.name || 'U')[0]}
+
+        {/* Profile Card */}
+        <div className="card" style={{marginTop:20}}>
+          <div style={{display:'flex', alignItems:'center', gap:16, marginBottom: editingProfile ? 16 : 0}}>
+            <div style={{position:'relative'}}>
+              {user?.avatar
+                ? <img src={user.avatar} alt="" style={{width:60, height:60, borderRadius:'50%', objectFit:'cover'}} />
+                : <div style={{
+                    width:60, height:60, borderRadius:'50%',
+                    background:'linear-gradient(135deg, var(--primary), var(--primary-light))',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:'1.5rem', color:'white', fontWeight:800,
+                  }}>
+                    {(user?.name || 'U')[0]}
+                  </div>
+              }
+            </div>
+            <div style={{flex:1}}>
+              <p style={{fontWeight:700, fontSize:'1.05rem'}}>{user?.name || 'User'}</p>
+              <p style={{color:'var(--text-muted)', fontSize:'0.85rem'}}>{user?.email}</p>
+            </div>
+            <button
+              onClick={() => { setEditName(user?.name||''); setEditEmail(user?.email||''); setEditAvatar(user?.avatar||''); setEditingProfile(true) }}
+              style={{background:'none', border:'1.5px solid var(--border)', borderRadius:8, padding:'5px 12px', cursor:'pointer', fontSize:'0.82rem', fontWeight:600, color:'var(--text-primary)'}}
+            >
+              Edit
+            </button>
           </div>
-          <div>
-            <p style={{fontWeight:700, fontSize:'1.05rem'}}>{user?.name || 'User'}</p>
-            <p style={{color:'var(--text-muted)', fontSize:'0.85rem'}}>{user?.email}</p>
-            {user?.provider && (
-              <span className="badge badge-income" style={{marginTop:4}}>
-                {user.provider === 'google' ? '🇬 Google' : '🇫 Facebook'}
-              </span>
-            )}
-          </div>
+
+          {editingProfile && (
+            <div style={{borderTop:'1px solid var(--border)', paddingTop:16, display:'flex', flexDirection:'column', gap:12}}>
+              <div>
+                <label style={{fontSize:'0.8rem', fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4}}>Name</label>
+                <input value={editName} onChange={e => setEditName(e.target.value)}
+                  style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1.5px solid var(--border)', background:'var(--bg-input)', color:'var(--text-primary)', fontSize:'0.95rem'}} />
+              </div>
+              <div>
+                <label style={{fontSize:'0.8rem', fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4}}>Email</label>
+                <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                  style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1.5px solid var(--border)', background:'var(--bg-input)', color:'var(--text-primary)', fontSize:'0.95rem'}} />
+              </div>
+              <div>
+                <label style={{fontSize:'0.8rem', fontWeight:600, color:'var(--text-muted)', display:'block', marginBottom:4}}>Profile Photo URL (optional)</label>
+                <input value={editAvatar} onChange={e => setEditAvatar(e.target.value)} placeholder="https://..."
+                  style={{width:'100%', padding:'10px 12px', borderRadius:8, border:'1.5px solid var(--border)', background:'var(--bg-input)', color:'var(--text-primary)', fontSize:'0.95rem'}} />
+              </div>
+              <div style={{display:'flex', gap:10}}>
+                <button className="btn btn-secondary" style={{flex:1}} onClick={() => setEditingProfile(false)}>Cancel</button>
+                <button className="btn btn-primary" style={{flex:2}} onClick={handleSaveProfile}>Save</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Settings */}
@@ -213,6 +272,57 @@ export default function SettingsPage() {
 
           <SettingRow icon="💵" label={t('currency')}>
             <span style={{color:'var(--text-secondary)', fontWeight:600}}>USD $</span>
+          </SettingRow>
+        </div>
+
+        {/* Social Accounts */}
+        <div className="card" style={{marginTop:16}}>
+          <p style={{fontWeight:700, fontSize:'0.8rem', color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:1, paddingBottom:8, borderBottom:'1px solid var(--border)'}}>
+            Social Accounts
+          </p>
+
+          <SettingRow icon="🔵" label="Facebook">
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              <span style={{
+                fontSize:'0.78rem', fontWeight:700, padding:'3px 8px', borderRadius:20,
+                background: facebookConnected ? '#d1fae5' : '#fee2e2',
+                color: facebookConnected ? '#065f46' : '#991b1b',
+              }}>
+                {facebookConnected ? '● Connected' : '● Not connected'}
+              </span>
+              <button
+                onClick={facebookConnected ? () => unlinkProvider('facebook') : handleConnectFacebook}
+                style={{
+                  fontSize:'0.78rem', fontWeight:600, padding:'3px 10px', borderRadius:8,
+                  border:'1.5px solid var(--border)', background:'var(--bg-input)',
+                  color:'var(--text-primary)', cursor:'pointer',
+                }}
+              >
+                {facebookConnected ? 'Disconnect' : 'Connect'}
+              </button>
+            </div>
+          </SettingRow>
+
+          <SettingRow icon="🔴" label="Google">
+            <div style={{display:'flex', alignItems:'center', gap:8}}>
+              <span style={{
+                fontSize:'0.78rem', fontWeight:700, padding:'3px 8px', borderRadius:20,
+                background: googleConnected ? '#d1fae5' : '#fee2e2',
+                color: googleConnected ? '#065f46' : '#991b1b',
+              }}>
+                {googleConnected ? '● Connected' : '● Not connected'}
+              </span>
+              <button
+                onClick={googleConnected ? () => unlinkProvider('google') : handleConnectGoogle}
+                style={{
+                  fontSize:'0.78rem', fontWeight:600, padding:'3px 10px', borderRadius:8,
+                  border:'1.5px solid var(--border)', background:'var(--bg-input)',
+                  color:'var(--text-primary)', cursor:'pointer',
+                }}
+              >
+                {googleConnected ? 'Disconnect' : 'Connect'}
+              </button>
+            </div>
           </SettingRow>
         </div>
 

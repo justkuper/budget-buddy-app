@@ -37,7 +37,7 @@ function loadFbSdk(appId) {
 
 export default function LoginPage() {
   const { t, i18n } = useTranslation()
-  const { signIn, signInWithGoogle } = useAuth()
+  const { signIn, signInWithGoogle, signInWithFacebook } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
@@ -124,7 +124,7 @@ export default function LoginPage() {
         email:    profileData.email || '',
         avatar:   profileData.picture?.data?.url || null,
         provider: 'facebook',
-        raw:      { sub: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
+        raw:      { id: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
       })
     } catch (err) {
       setError(err.message || 'Facebook sign-in failed.')
@@ -138,7 +138,11 @@ export default function LoginPage() {
     if (!pendingProfile) return
     setLoading(true)
     try {
-      await signInWithGoogle(pendingProfile.raw)
+      if (pendingProfile.provider === 'google') {
+        await signInWithGoogle(pendingProfile.raw)
+      } else {
+        await signInWithFacebook(pendingProfile.raw)
+      }
       const email = pendingProfile.email
       const token = await sendLoginCode(email)
       sessionStorage.setItem('bb-2fa-token', token)

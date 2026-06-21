@@ -1,8 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
-// In production, replace mock email/password with AWS Amplify:
-// import { signIn, signOut, signUp, getCurrentUser, confirmSignIn } from 'aws-amplify/auth'
-
 const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
@@ -23,38 +20,106 @@ export function AuthProvider({ children }) {
     localStorage.setItem('bb-session', JSON.stringify(u))
   }
 
-  // --- Email/Password Sign In (demo mode) ---
+  // --- Email/Password Sign In ---
   const signIn = async (email, password) => {
     if (email && password) {
-      persist({ userId: email, email, name: email.split('@')[0], avatar: null })
+      const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
+      persist({
+        userId: existing?.userId || email,
+        email: existing?.email || email,
+        name: existing?.name || email.split('@')[0],
+        avatar: existing?.avatar || null,
+        providers: existing?.providers || {},
+      })
       return { mfaRequired: false }
     }
     throw new Error('Invalid credentials')
   }
 
-  // --- Google OAuth (real) ---
-  // Called from LoginPage after @react-oauth/google resolves the access token
-  // and we've fetched the user profile from Google's userinfo endpoint.
+  // --- Google Sign In (initial login) ---
   const signInWithGoogle = async (googleProfile) => {
-    const u = {
-      userId: googleProfile.sub,
-      email: googleProfile.email,
-      name: googleProfile.name,
-      avatar: googleProfile.picture,
-      provider: 'google',
-    }
-    persist(u)
+    const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
+    persist({
+      userId: existing?.userId || googleProfile.sub,
+      email: existing?.email || googleProfile.email,
+      name: existing?.name || googleProfile.name,
+      avatar: existing?.avatar || googleProfile.picture,
+      providers: {
+        ...(existing?.providers || {}),
+        google: {
+          sub: googleProfile.sub,
+          email: googleProfile.email,
+          name: googleProfile.name,
+          picture: googleProfile.picture,
+        },
+      },
+    })
   }
 
-  // --- Facebook (demo — real implementation needs Facebook JS SDK) ---
-  const signInWithFacebook = async () => {
+  // --- Facebook Sign In (initial login) ---
+  const signInWithFacebook = async (fbProfile) => {
+    const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
     persist({
-      userId: 'fb-demo',
-      email: '',
-      name: 'Facebook User',
-      avatar: null,
-      provider: 'facebook',
+      userId: existing?.userId || `fb-${fbProfile.id}`,
+      email: existing?.email || fbProfile.email || '',
+      name: existing?.name || fbProfile.name,
+      avatar: existing?.avatar || fbProfile.picture || null,
+      providers: {
+        ...(existing?.providers || {}),
+        facebook: {
+          id: fbProfile.id,
+          email: fbProfile.email || '',
+          name: fbProfile.name,
+          picture: fbProfile.picture || null,
+        },
+      },
     })
+  }
+
+  // --- Link Google to existing account ---
+  const linkGoogle = async (googleProfile) => {
+    const updated = {
+      ...user,
+      providers: {
+        ...(user?.providers || {}),
+        google: {
+          sub: googleProfile.sub,
+          email: googleProfile.email,
+          name: googleProfile.name,
+          picture: googleProfile.picture,
+        },
+      },
+    }
+    persist(updated)
+  }
+
+  // --- Link Facebook to existing account ---
+  const linkFacebook = async (fbProfile) => {
+    const updated = {
+      ...user,
+      providers: {
+        ...(user?.providers || {}),
+        facebook: {
+          id: fbProfile.id,
+          email: fbProfile.email || '',
+          name: fbProfile.name,
+          picture: fbProfile.picture || null,
+        },
+      },
+    }
+    persist(updated)
+  }
+
+  // --- Unlink a provider ---
+  const unlinkProvider = (provider) => {
+    const providers = { ...(user?.providers || {}) }
+    delete providers[provider]
+    persist({ ...user, providers })
+  }
+
+  // --- Update profile (name, email, avatar) ---
+  const updateProfile = (updates) => {
+    persist({ ...user, ...updates })
   }
 
   // --- 2FA ---
@@ -81,7 +146,13 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, mfaPending, signIn, signInWithGoogle, signInWithFacebook, confirmMFA, signUp, signOut }}>
+    <AuthContext.Provider value={{
+      user, loading, mfaPending,
+      signIn, signInWithGoogle, signInWithFacebook,
+      linkGoogle, linkFacebook, unlinkProvider,
+      updateProfile,
+      confirmMFA, signUp, signOut,
+    }}>
       {children}
     </AuthContext.Provider>
   )
