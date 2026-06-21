@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -17,6 +18,125 @@ function SettingRow({ icon, label, children, danger }) {
       </div>
       {children}
     </div>
+  )
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
+function TwoFARow({ navigate, user }) {
+  const [twoFaEnabled, setTwoFaEnabled] = useState(
+    () => localStorage.getItem('bb-2fa-enabled') !== 'false'
+  )
+  const [confirming, setConfirming] = useState(false) // showing disable-confirm modal
+  const [code, setCode]             = useState('')
+  const [token, setToken]           = useState(null)
+  const [sending, setSending]       = useState(false)
+  const [error, setError]           = useState('')
+
+  const handleToggle = async () => {
+    if (!twoFaEnabled) {
+      // Turning ON → go to full setup flow
+      navigate('/auth/2fa-setup')
+    } else {
+      // Turning OFF → send a code first to confirm
+      setError('')
+      setSending(true)
+      try {
+        const res = await fetch(`${API_BASE}/api/send-2fa-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'email', contact: user?.email }),
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Failed to send code')
+        setToken(data.token)
+        setConfirming(true)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setSending(false)
+      }
+    }
+  }
+
+  const handleDisableConfirm = async () => {
+    setError('')
+    try {
+      const res = await fetch(`${API_BASE}/api/verify-2fa-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, code }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Incorrect code')
+      localStorage.setItem('bb-2fa-enabled', 'false')
+      setTwoFaEnabled(false)
+      setConfirming(false)
+      setCode('')
+    } catch (e) {
+      setError(e.message)
+    }
+  }
+
+  return (
+    <>
+      <SettingRow icon="🔐" label="Two-Factor Auth">
+        <div style={{display:'flex', alignItems:'center', gap:10}}>
+          <span style={{fontSize:'0.82rem', color:'var(--text-muted)'}}>
+            {twoFaEnabled ? 'On' : 'Off'}
+          </span>
+          <div
+            onClick={!sending ? handleToggle : undefined}
+            style={{
+              width:44, height:24, borderRadius:12, cursor:'pointer',
+              background: twoFaEnabled ? 'var(--primary)' : 'var(--border)',
+              position:'relative', transition:'background 0.2s',
+            }}
+          >
+            <div style={{
+              position:'absolute', top:3, left: twoFaEnabled ? 23 : 3,
+              width:18, height:18, borderRadius:'50%', background:'white',
+              transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
+            }} />
+          </div>
+        </div>
+      </SettingRow>
+
+      {confirming && (
+        <div className="overlay" onClick={() => { setConfirming(false); setCode(''); setError('') }}>
+          <div className="sheet" onClick={e => e.stopPropagation()} style={{padding:24}}>
+            <div className="sheet-handle" />
+            <h3 style={{fontWeight:700, marginBottom:8}}>Disable Two-Factor Auth</h3>
+            <p style={{fontSize:'0.88rem', color:'var(--text-muted)', marginBottom:16}}>
+              Enter the 6-digit code sent to <strong>{user?.email}</strong> to confirm.
+            </p>
+            {error && <div className="auth-error" style={{marginBottom:12}}>⚠️ {error}</div>}
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={e => setCode(e.target.value.replace(/\D/g, ''))}
+              placeholder="000000"
+              style={{
+                width:'100%', padding:'12px 16px', borderRadius:10, marginBottom:16,
+                border:'1.5px solid var(--border)', background:'var(--bg-input)',
+                color:'var(--text-primary)', fontSize:'1.2rem', letterSpacing:8, textAlign:'center',
+              }}
+              autoFocus
+            />
+            <div style={{display:'flex', gap:10}}>
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => { setConfirming(false); setCode(''); setError('') }}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" style={{flex:2, background:'var(--expense)'}} onClick={handleDisableConfirm} disabled={code.length < 6}>
+                Disable 2FA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -89,11 +209,7 @@ export default function SettingsPage() {
             </div>
           </SettingRow>
 
-          <SettingRow icon="🔐" label="Two-Factor Auth">
-            <button className="btn btn-secondary" style={{padding:'6px 14px', fontSize:'0.85rem'}} onClick={() => navigate('/auth/2fa-setup')}>
-              {t('setupTwoFactor')}
-            </button>
-          </SettingRow>
+          <TwoFARow navigate={navigate} user={user} />
 
           <SettingRow icon="💵" label={t('currency')}>
             <span style={{color:'var(--text-secondary)', fontWeight:600}}>USD $</span>

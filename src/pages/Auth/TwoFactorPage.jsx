@@ -33,12 +33,16 @@ export default function TwoFactorPage({ isSetup = false }) {
   const { confirmMFA, signOut, user } = useAuth()
   const navigate = useNavigate()
 
+  // For login 2FA: token + email were stored by LoginPage before navigating here
+  const sessionToken   = !isSetup ? sessionStorage.getItem('bb-2fa-token') : null
+  const sessionContact = !isSetup ? sessionStorage.getItem('bb-2fa-email') : null
+
   // Steps: 'choose' → 'contact' → 'code' → 'success'
   const [step, setStep]         = useState(isSetup ? 'choose' : 'code')
-  const [method, setMethod]     = useState('email')   // 'email' | 'sms'
-  const [contact, setContact]   = useState(user?.email || '')
+  const [method, setMethod]     = useState('email')
+  const [contact, setContact]   = useState(sessionContact || user?.email || '')
   const [sending, setSending]   = useState(false)
-  const [verifyToken, setVerifyToken] = useState(null) // HMAC token returned from server
+  const [verifyToken, setVerifyToken] = useState(sessionToken)
   const [code, setCode]         = useState(['', '', '', '', '', ''])
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -106,8 +110,13 @@ export default function TwoFactorPage({ isSetup = false }) {
         // Fallback: confirmMFA for login 2FA flow (token already set up on server)
         await confirmMFA(full)
       }
-      if (isSetup) setStep('success')
-      else navigate('/')
+      if (isSetup) {
+        setStep('success')
+      } else {
+        sessionStorage.removeItem('bb-2fa-token')
+        sessionStorage.removeItem('bb-2fa-email')
+        navigate('/')
+      }
     } catch (err) {
       setError(err.message || 'Incorrect code. Please try again.')
       setCode(['', '', '', '', '', ''])

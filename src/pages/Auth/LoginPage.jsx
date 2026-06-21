@@ -6,6 +6,19 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import './Auth.css'
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
+async function sendLoginCode(email) {
+  const res = await fetch(`${API_BASE}/api/send-2fa-code`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ method: 'email', contact: email }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || 'Failed to send code')
+  return data.token
+}
+
 // Loads the Facebook JS SDK once and resolves when ready
 function loadFbSdk(appId) {
   return new Promise((resolve) => {
@@ -42,8 +55,11 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const result = await signIn(email, password)
-      navigate(result?.mfaRequired ? '/auth/2fa' : '/')
+      await signIn(email, password)
+      const token = await sendLoginCode(email)
+      sessionStorage.setItem('bb-2fa-token', token)
+      sessionStorage.setItem('bb-2fa-email', email)
+      navigate('/auth/2fa')
     } catch (err) {
       setError(err.message || t('error'))
     } finally {
@@ -123,7 +139,11 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await signInWithGoogle(pendingProfile.raw)
-      navigate('/')
+      const email = pendingProfile.email
+      const token = await sendLoginCode(email)
+      sessionStorage.setItem('bb-2fa-token', token)
+      sessionStorage.setItem('bb-2fa-email', email)
+      navigate('/auth/2fa')
     } catch (err) {
       setError(err.message || 'Sign-in failed')
     } finally {
