@@ -1,10 +1,25 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useGoogleLogin } from '@react-oauth/google'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePlaid } from '../../contexts/PlaidContext'
 import { useNavigate, Link } from 'react-router-dom'
 import TopBar from '../../components/Layout/TopBar'
+
+function loadFbSdk(appId) {
+  return new Promise((resolve) => {
+    if (window.FB) { resolve(window.FB); return }
+    window.fbAsyncInit = () => {
+      window.FB.init({ appId, cookie: true, xfbml: false, version: 'v19.0' })
+      resolve(window.FB)
+    }
+    const s = document.createElement('script')
+    s.src = 'https://connect.facebook.net/en_US/sdk.js'
+    s.async = true; s.defer = true
+    document.body.appendChild(s)
+  })
+}
 
 function SettingRow({ icon, label, children, danger }) {
   return (
@@ -164,18 +179,58 @@ export default function SettingsPage() {
 
   const googleConnected   = !!user?.providers?.google
   const facebookConnected = !!user?.providers?.facebook
+  const [socialError, setSocialError] = useState('')
+  const [socialLoading, setSocialLoading] = useState('')
 
-  // Connect Google from settings
-  const handleConnectGoogle = () => {
-    // Reuse Google login flow — store intent so LoginPage knows to link, not sign in
-    sessionStorage.setItem('bb-link-intent', 'google')
-    navigate('/auth/login')
-  }
+  // Connect Google inline
+  const connectGoogle = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setSocialLoading('google')
+      setSocialError('')
+      try {
+        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        })
+        const profile = await res.json()
+        await linkGoogle(profile)
+      } catch (e) {
+        setSocialError('Failed to connect Google: ' + e.message)
+      } finally {
+        setSocialLoading('')
+      }
+    },
+    onError: () => setSocialError('Google connection was cancelled.'),
+  })
 
-  // Connect Facebook from settings
-  const handleConnectFacebook = () => {
-    sessionStorage.setItem('bb-link-intent', 'facebook')
-    navigate('/auth/login')
+  // Connect Facebook inline
+  const handleConnectFacebook = async () => {
+    setSocialLoading('facebook')
+    setSocialError('')
+    try {
+      const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID
+      const FB = await loadFbSdk(FB_APP_ID)
+      const authResponse = await new Promise((resolve, reject) => {
+        FB.login(
+          (res) => res.authResponse ? resolve(res.authResponse) : reject(new Error('Cancelled')),
+          { scope: 'public_profile,email' }
+        )
+      })
+      const profileData = await new Promise((resolve, reject) => {
+        FB.api('/me', { fields: 'id,name,email,picture.type(large)', access_token: authResponse.accessToken },
+          (data) => data && !data.error ? resolve(data) : reject(new Error('Failed to fetch profile'))
+        )
+      })
+      await linkFacebook({
+        id: profileData.id,
+        name: profileData.name,
+        email: profileData.email || '',
+        picture: profileData.picture?.data?.url || null,
+      })
+    } catch (e) {
+      setSocialError('Failed to connect Facebook: ' + e.message)
+    } finally {
+      setSocialLoading('')
+    }
   }
 
   return (
@@ -281,6 +336,10 @@ export default function SettingsPage() {
             Social Accounts
           </p>
 
+          {socialError && (
+            <p style={{fontSize:'0.82rem', color:'var(--expense)', margin:'8px 0'}}>⚠️ {socialError}</p>
+          )}
+
           <SettingRow icon="🔵" label="Facebook">
             <div style={{display:'flex', alignItems:'center', gap:8}}>
               <span style={{
@@ -292,13 +351,14 @@ export default function SettingsPage() {
               </span>
               <button
                 onClick={facebookConnected ? () => unlinkProvider('facebook') : handleConnectFacebook}
+                disabled={socialLoading === 'facebook'}
                 style={{
                   fontSize:'0.78rem', fontWeight:600, padding:'3px 10px', borderRadius:8,
                   border:'1.5px solid var(--border)', background:'var(--bg-input)',
-                  color:'var(--text-primary)', cursor:'pointer',
+                  color:'var(--text-primary)', cursor:'pointer', opacity: socialLoading === 'facebook' ? 0.6 : 1,
                 }}
               >
-                {facebookConnected ? 'Disconnect' : 'Connect'}
+                {socialLoading === 'facebook' ? '…' : facebookConnected ? 'Disconnect' : 'Connect'}
               </button>
             </div>
           </SettingRow>
@@ -313,14 +373,15 @@ export default function SettingsPage() {
                 {googleConnected ? '● Connected' : '● Not connected'}
               </span>
               <button
-                onClick={googleConnected ? () => unlinkProvider('google') : handleConnectGoogle}
+                onClick={googleConnected ? () => unlinkProvider('google') : () => connectGoogle()}
+                disabled={socialLoading === 'google'}
                 style={{
                   fontSize:'0.78rem', fontWeight:600, padding:'3px 10px', borderRadius:8,
                   border:'1.5px solid var(--border)', background:'var(--bg-input)',
-                  color:'var(--text-primary)', cursor:'pointer',
+                  color:'var(--text-primary)', cursor:'pointer', opacity: socialLoading === 'google' ? 0.6 : 1,
                 }}
               >
-                {googleConnected ? 'Disconnect' : 'Connect'}
+                {socialLoading === 'google' ? '…' : googleConnected ? 'Disconnect' : 'Connect'}
               </button>
             </div>
           </SettingRow>
