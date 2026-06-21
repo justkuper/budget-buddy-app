@@ -33,6 +33,7 @@ export default function LoginPage() {
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
 
+  // Pending profile shown in "confirm sign-in" modal before actually signing in
   const [pendingProfile, setPendingProfile] = useState(null)
 
   // ── Email / Password ──────────────────────────────────────────────────────
@@ -61,6 +62,7 @@ export default function LoginPage() {
         })
         if (!res.ok) throw new Error('Failed to fetch Google profile')
         const profile = await res.json()
+        // Show confirmation modal — don't sign in yet
         setPendingProfile({
           name:     profile.name,
           email:    profile.email,
@@ -77,13 +79,15 @@ export default function LoginPage() {
     onError: () => setError('Google sign-in was cancelled or failed.'),
   })
 
-  // ── Facebook OAuth ─────────────────────────────────────────────────────────
+  // ── Facebook OAuth (real) ─────────────────────────────────────────────────
   const handleFacebook = async () => {
     setError('')
     setLoading(true)
     try {
       const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID
-      if (!FB_APP_ID) throw new Error('Facebook App ID not configured. Add VITE_FACEBOOK_APP_ID to your environment variables.')
+      if (!FB_APP_ID) {
+        throw new Error('Facebook App ID not configured. Add VITE_FACEBOOK_APP_ID to Netlify environment variables.')
+      }
       const FB = await loadFbSdk(FB_APP_ID)
       const authResponse = await new Promise((resolve, reject) => {
         FB.login(
@@ -98,6 +102,7 @@ export default function LoginPage() {
           (data) => data && !data.error ? resolve(data) : reject(new Error(data?.error?.message || 'Failed to fetch Facebook profile'))
         )
       })
+      // Show confirmation modal
       setPendingProfile({
         name:     profileData.name,
         email:    profileData.email || '',
@@ -212,10 +217,12 @@ export default function LoginPage() {
         </p>
       </div>
 
+      {/* ── Confirm sign-in modal ─────────────────────────────────────────── */}
       {pendingProfile && (
         <div className="overlay" onClick={() => !loading && setPendingProfile(null)}>
           <div className="sheet confirm-signin-sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle" />
+
             <div className="confirm-signin-provider">
               {pendingProfile.provider === 'google' ? (
                 <svg width="20" height="20" viewBox="0 0 18 18">
@@ -233,9 +240,11 @@ export default function LoginPage() {
                 Sign in with {pendingProfile.provider === 'google' ? 'Google' : 'Facebook'}
               </span>
             </div>
+
             <p style={{fontSize:'0.82rem', color:'var(--text-muted)', marginBottom:20, lineHeight:1.5}}>
               Budget Buddy will access your name, email address, and profile photo.
             </p>
+
             <div className="confirm-signin-profile">
               {pendingProfile.avatar
                 ? <img src={pendingProfile.avatar} alt="" className="confirm-signin-avatar" />
@@ -248,9 +257,22 @@ export default function LoginPage() {
                 <p style={{fontSize:'0.85rem', color:'var(--text-muted)'}}>{pendingProfile.email}</p>
               </div>
             </div>
+
             <div style={{display:'flex', gap:10, marginTop:8}}>
-              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPendingProfile(null)} disabled={loading}>Cancel</button>
-              <button className="btn btn-primary" style={{flex:2}} onClick={handleConfirmSignIn} disabled={loading}>
+              <button
+                className="btn btn-secondary"
+                style={{flex:1}}
+                onClick={() => setPendingProfile(null)}
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                style={{flex:2}}
+                onClick={handleConfirmSignIn}
+                disabled={loading}
+              >
                 {loading ? 'Signing in…' : 'Continue'}
               </button>
             </div>

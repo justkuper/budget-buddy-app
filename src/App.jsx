@@ -14,6 +14,9 @@ import BillsPage from './pages/Bills/BillsPage'
 import ReportsPage from './pages/Reports/ReportsPage'
 import SettingsPage from './pages/Settings/SettingsPage'
 import LinkedAccountsPage from './pages/LinkedAccounts/LinkedAccountsPage'
+import TermsPage from './pages/Legal/TermsPage'
+import PrivacyPage from './pages/Legal/PrivacyPage'
+import DataDeletionPage from './pages/Legal/DataDeletionPage'
 
 function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(() => window.innerWidth >= 768)
@@ -48,6 +51,11 @@ const AppRoutes = () => (
     <Route path="/reports"         element={<PrivateRoute><ReportsPage /></PrivateRoute>} />
     <Route path="/linked-accounts" element={<PrivateRoute><LinkedAccountsPage /></PrivateRoute>} />
     <Route path="/settings"        element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
+
+    {/* Legal — public, no auth required */}
+    <Route path="/terms"         element={<TermsPage />} />
+    <Route path="/privacy"       element={<PrivacyPage />} />
+    <Route path="/data-deletion" element={<DataDeletionPage />} />
 
     {/* Fallback */}
     <Route path="*" element={<Navigate to="/" replace />} />

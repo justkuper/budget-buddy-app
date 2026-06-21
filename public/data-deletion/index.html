@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Deletion – Budget Buddy</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f9f9fb; color: #1a1a2e; line-height: 1.7; }
+    .container { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+    .header { margin-bottom: 40px; }
+    .logo { font-size: 2rem; }
+    h1 { font-size: 1.8rem; font-weight: 800; margin-top: 8px; margin-bottom: 4px; }
+    .subtitle { color: #6b7280; font-size: 0.9rem; }
+    .date { color: #9ca3af; font-size: 0.82rem; margin-top: 4px; }
+    .section { margin-bottom: 28px; }
+    .section h2 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+    .section p { color: #374151; font-size: 0.93rem; }
+    .section ul { color: #374151; font-size: 0.93rem; padding-left: 20px; }
+    .section ul li { margin-bottom: 6px; }
+    a { color: #6c63ff; }
+    .card { background: #fff; border: 1px solid #e8e9ff; border-radius: 14px; padding: 24px; margin-bottom: 24px; }
+    .btn { display: inline-block; background: #d94f4f; color: #fff; padding: 12px 28px; border-radius: 10px; font-weight: 700; text-decoration: none; font-size: 0.95rem; cursor: pointer; border: none; margin-top: 8px; }
+    .btn:hover { background: #c03a3a; }
+    .footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid #e8e9ff; display: flex; flex-direction: column; gap: 12px; }
+    .footer a { font-weight: 600; text-decoration: none; font-size: 0.9rem; color: #6c63ff; }
+    .notice { background: #fff8f0; border: 1px solid #fddcb5; border-radius: 10px; padding: 16px 20px; color: #92400e; font-size: 0.88rem; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">💰</div>
+      <h1>Budget Buddy</h1>
+      <p class="subtitle">Data Deletion Request</p>
+      <p class="date">Last updated: June 2026</p>
+    </div>
+
+    <div class="notice">
+      ⚠️ <strong>This action is permanent.</strong> Deleted data cannot be recovered.
+    </div>
+
+    <div class="section">
+      <h2>What data do we hold?</h2>
+      <p>Budget Buddy stores data locally in your browser. We do not maintain a central database of your personal financial information. The following data is stored on your device:</p>
+      <ul style="margin-top: 10px;">
+        <li>Your profile information (name, email, photo) from Google or Facebook sign-in</li>
+        <li>Transactions you have manually entered</li>
+        <li>Budget categories and limits</li>
+        <li>Bill reminders and payment history</li>
+        <li>Linked bank account tokens (via Plaid)</li>
+        <li>App preferences (theme, language)</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>How to delete your data</h2>
+      <p>Since all your data is stored locally on your device, you can delete it instantly by clearing your browser's local storage. You can do this directly in the Budget Buddy app:</p>
+      <div class="card">
+        <p style="font-weight:700; margin-bottom:8px;">Option 1 — Delete from within the app</p>
+        <p style="font-size:0.9rem; color:#374151;">Sign in to Budget Buddy, go to <strong>Settings → Account → Delete All Data</strong>. This will permanently clear all your local data and sign you out.</p>
+      </div>
+      <div class="card">
+        <p style="font-weight:700; margin-bottom:8px;">Option 2 — Clear browser storage manually</p>
+        <p style="font-size:0.9rem; color:#374151;">In your browser, go to Settings → Privacy → Clear browsing data → Cached images and files + Cookies and site data. Select the Budget Buddy site and clear.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Third-party data</h2>
+      <p>If you signed in with Google or Facebook, your sign-in session is managed by those platforms. To revoke Budget Buddy's access:</p>
+      <ul style="margin-top: 10px;">
+        <li><strong>Google:</strong> Visit <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">myaccount.google.com/permissions</a> and remove Budget Buddy</li>
+        <li><strong>Facebook:</strong> Visit <a href="https://www.facebook.com/settings?tab=applications" target="_blank" rel="noopener">Facebook App Settings</a> and remove Budget Buddy</li>
+        <li><strong>Plaid:</strong> Visit <a href="https://my.plaid.com" target="_blank" rel="noopener">my.plaid.com</a> to manage or revoke bank connections</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>Request deletion by email</h2>
+      <p>If you need assistance or want to confirm deletion of any data we may hold, email us at: <a href="mailto:kbank1988@gmail.com">kbank1988@gmail.com</a><br /><br />
+      We will respond within 30 days and confirm deletion of any data associated with your account.</p>
+    </div>
+
+    <div class="footer">
+      <a href="/privacy">→ View Privacy Policy</a>
+      <a href="/terms">→ View Terms of Service</a>
+    </div>
+  </div>
+</body>
+</html>

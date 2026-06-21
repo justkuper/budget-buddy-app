@@ -1,21 +1,32 @@
 import { createContext, useContext, useEffect, useReducer, useCallback } from 'react'
-import { useAuth, apiFetch } from './AuthContext'
-
-// ─── Notes on security ────────────────────────────────────────────────────────
-// Plaid access tokens are NEVER sent to or stored in the browser.
-// The backend (secure-finance-backend) stores them encrypted in DynamoDB.
-// All Plaid calls go through our authenticated backend routes.
+import { useAuth } from './AuthContext'
 
 const PlaidContext = createContext()
 
-// ─── Reducer ──────────────────────────────────────────────────────────────────
+// ── API helpers ────────────────────────────────────────────────────────────────
+// VITE_API_URL = your API Gateway base URL (e.g. https://abc123.execute-api.us-east-1.amazonaws.com/prod)
+// Leave blank in .env for local dev — Vite proxy will forward /api/* to local functions
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
+const API = async (path, body) => {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`)
+  return data
+}
+
+// ── Reducer ───────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
     case 'ADD_ITEM':
       return {
         ...state,
         items: [
-          ...state.items.filter(i => i.itemId !== action.payload.itemId),
+          ...state.items.filter(i => i.item_id !== action.payload.item_id),
           action.payload,
         ],
       }
@@ -23,15 +34,21 @@ function reducer(state, action) {
       return {
         ...state,
         items: state.items.map(item =>
-          item.itemId === action.itemId
+          item.item_id === action.item_id
             ? { ...item, accounts: action.accounts, lastRefreshed: new Date().toISOString() }
             : item
         ),
       }
     case 'REMOVE_ITEM':
-      return { ...state, items: state.items.filter(i => i.itemId !== action.itemId) }
-    case 'SET_TRANSACTIONS':
-      return { ...state, plaidTransactions: action.transactions }
+      return { ...state, items: state.items.filter(i => i.item_id !== action.item_id) }
+    case 'ADD_PLAID_TRANSACTIONS': {
+      const existing = state.plaidTransactions.filter(t => !action.added.find(a => a.id === t.id))
+      return {
+        ...state,
+        plaidTransactions: [...existing, ...action.added],
+        cursors: { ...state.cursors, [action.item_id]: action.next_cursor },
+      }
+    }
     case 'SET_LOADING':
       return { ...state, loading: action.value }
     case 'SET_ERROR':
@@ -46,53 +63,53 @@ function loadState() {
     const raw = localStorage.getItem('bb-plaid')
     if (raw) return JSON.parse(raw)
   } catch {}
-  return { items: [], plaidTransactions: [], loading: false, error: null }
+  return { items: [], plaidTransactions: [], cursors: {}, loading: false, error: null }
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ── Provider ──────────────────────────────────────────────────────────────────
 export function PlaidProvider({ children }) {
   const { user } = useAuth()
   const [state, dispatch] = useReducer(reducer, null, loadState)
 
-  // Persist non-ephemeral state
   useEffect(() => {
     const { loading, error, ...persisted } = state
     localStorage.setItem('bb-plaid', JSON.stringify(persisted))
   }, [state])
 
-  // ── Get a Plaid Link token ────────────────────────────────────────────────
+  // Get a link token from our backend
   const getLinkToken = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', value: true })
     try {
-      const data = await apiFetch('plaid/link-token', { method: 'POST' })
-      return data.linkToken
+      const data = await API('create-link-token', { userId: user?.userId || 'demo-user' })
+      return data.link_token
     } finally {
       dispatch({ type: 'SET_LOADING', value: false })
     }
   }, [user])
 
-  // ── Called by Plaid Link onSuccess ────────────────────────────────────────
-  // Exchanges public_token → backend stores encrypted access_token in DynamoDB.
-  // Response: { itemId, accounts, institutionName }
+  // Called by Plaid Link onSuccess — exchanges token and stores item
   const onPlaidSuccess = useCallback(async (public_token, metadata) => {
     dispatch({ type: 'SET_LOADING', value: true })
     dispatch({ type: 'SET_ERROR', message: null })
     try {
-      const data = await apiFetch('plaid/exchange', {
-        method: 'POST',
-        body: JSON.stringify({ publicToken: public_token }),
+      const data = await API('exchange-public-token', {
+        public_token,
+        institution: metadata.institution,
+        userId: user?.userId || 'demo-user',
       })
+      // Store access_token in the item (demo only — use a DB in production)
       dispatch({
         type: 'ADD_ITEM',
         payload: {
-          itemId: data.itemId,
-          institutionName: data.institutionName || metadata?.institution?.name || 'Bank',
+          item_id: data.item_id,
+          access_token: data.access_token,
+          institution: data.institution,
           accounts: data.accounts,
           lastRefreshed: new Date().toISOString(),
         },
       })
-      // Pull latest transactions immediately
-      await _syncAll()
+      // Sync recent transactions right away
+      await _syncTransactions(data.item_id, data.access_token, null)
     } catch (e) {
       dispatch({ type: 'SET_ERROR', message: e.message })
     } finally {
@@ -100,58 +117,54 @@ export function PlaidProvider({ children }) {
     }
   }, [user])
 
-  // ── Refresh accounts for a specific item ─────────────────────────────────
-  const refreshAccounts = useCallback(async (itemId) => {
+  // Internal sync helper (uses access_token directly)
+  const _syncTransactions = async (item_id, access_token, cursor) => {
     try {
-      const accounts = await apiFetch('plaid/accounts', { method: 'GET' })
-      // Filter to accounts belonging to this item
-      const itemAccounts = accounts.filter(a => a.itemId === itemId)
-      dispatch({ type: 'UPDATE_ACCOUNTS', itemId, accounts: itemAccounts })
-    } catch (e) {
-      dispatch({ type: 'SET_ERROR', message: e.message })
-    }
-  }, [])
-
-  // ── Sync transactions from Plaid into DynamoDB, then fetch from DynamoDB ──
-  const syncTransactions = useCallback(async () => {
-    try {
-      await apiFetch('plaid/transactions/sync', { method: 'POST' })
-      const { transactions } = await apiFetch('plaid/transactions?limit=200', { method: 'GET' })
-      dispatch({ type: 'SET_TRANSACTIONS', transactions })
-      return transactions
+      const data = await API('sync-transactions', { access_token, cursor })
+      dispatch({
+        type: 'ADD_PLAID_TRANSACTIONS',
+        item_id,
+        added: data.added,
+        next_cursor: data.next_cursor,
+      })
+      return data.added
     } catch (e) {
       dispatch({ type: 'SET_ERROR', message: e.message })
       return []
     }
-  }, [])
-
-  // Internal: sync all items (called after linking a new account)
-  const _syncAll = async () => {
-    try {
-      await apiFetch('plaid/transactions/sync', { method: 'POST' })
-      const { transactions } = await apiFetch('plaid/transactions?limit=200', { method: 'GET' })
-      dispatch({ type: 'SET_TRANSACTIONS', transactions })
-    } catch { /* non-critical */ }
   }
 
-  // ── Unlink a bank account ─────────────────────────────────────────────────
-  const removeItem = useCallback(async (itemId) => {
+  // Public: refresh balances for a specific item
+  const refreshAccounts = useCallback(async (item_id) => {
+    const item = state.items.find(i => i.item_id === item_id)
+    if (!item) return
     try {
-      await apiFetch(`plaid/items/${itemId}`, { method: 'DELETE' })
-    } catch { /* proceed even if backend call fails */ }
-    dispatch({ type: 'REMOVE_ITEM', itemId })
+      const data = await API('get-accounts', { access_token: item.access_token })
+      dispatch({ type: 'UPDATE_ACCOUNTS', item_id, accounts: data.accounts })
+    } catch (e) {
+      dispatch({ type: 'SET_ERROR', message: e.message })
+    }
+  }, [state.items])
+
+  // Public: sync new transactions for a specific item
+  const syncTransactions = useCallback(async (item_id) => {
+    const item = state.items.find(i => i.item_id === item_id)
+    if (!item) return []
+    const cursor = state.cursors[item_id] || null
+    return _syncTransactions(item_id, item.access_token, cursor)
+  }, [state.items, state.cursors])
+
+  // Remove a linked bank
+  const removeItem = useCallback((item_id) => {
+    dispatch({ type: 'REMOVE_ITEM', item_id })
   }, [])
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // Derived values
   const totalBankBalance = state.items.reduce((sum, item) =>
-    sum + (item.accounts || []).reduce((s, a) => s + (a.balances?.current || 0), 0), 0)
+    sum + item.accounts.reduce((s, a) => s + (a.balances.current || 0), 0), 0)
 
   const allAccounts = state.items.flatMap(item =>
-    (item.accounts || []).map(a => ({
-      ...a,
-      institutionName: item.institutionName,
-      itemId: item.itemId,
-    }))
+    item.accounts.map(a => ({ ...a, institution: item.institution, item_id: item.item_id }))
   )
 
   return (

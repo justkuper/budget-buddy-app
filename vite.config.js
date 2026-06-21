@@ -5,12 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
-    // Proxy /api/* → backend (npm run dev in secure-finance-backend runs on :3001)
+    // Local dev proxy: forwards /api/* to a locally running Lambda server
+    // Run: node local-api-server.js in a second terminal to use this
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:4000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },
