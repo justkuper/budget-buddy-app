@@ -39,7 +39,11 @@ export default function TwoFactorPage({ isSetup = false }) {
       return
     }
     const token = getAccessToken()
-    if (!token) { navigate('/auth/login'); return }
+    if (!token) {
+      // Google/Facebook users have no backend JWT — TOTP not applicable
+      if (user?.provider) { navigate('/'); return }
+      navigate('/auth/login'); return
+    }
 
     apiFetch('auth/mfa/setup', { method: 'POST' })
       .then(({ secretCode: sc, qrUri: uri, session: sess }) => {

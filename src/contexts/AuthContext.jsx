@@ -3,8 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 // ─── API base URL ──────────────────────────────────────────────────────────────
 // Dev: Vite proxies /api → http://localhost:3001 (see vite.config.js)
 // Production (Netlify): /api/* is rewritten to the serverless function
-const BASE = '/api'
-
+const BASE = import.meta.env.VITE_API_URL || '/api'
 // ─── Token storage ─────────────────────────────────────────────────────────────
 function getTokens() {
   try { return JSON.parse(localStorage.getItem('bb-tokens') || 'null') } catch { return null }
