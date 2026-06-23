@@ -28,8 +28,8 @@ export default function PlaidLinkButton({ onSuccess, style = {}, autoOpen, child
     return () => { cancelled = true }
   }, [getLinkToken])
 
-  const handleSuccess = useCallback(async (public_token, metadata) => {
-    await onPlaidSuccess(public_token, metadata)
+  const handleSuccess = useCallback(async (publicToken, metadata) => {
+    await onPlaidSuccess(publicToken, metadata)
     onSuccess?.()
   }, [onPlaidSuccess, onSuccess])
 

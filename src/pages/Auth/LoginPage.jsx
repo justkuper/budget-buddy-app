@@ -55,11 +55,12 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      await signIn(email, password)
-      const token = await sendLoginCode(email)
-      sessionStorage.setItem('bb-2fa-token', token)
-      sessionStorage.setItem('bb-2fa-email', email)
-      navigate('/auth/2fa')
+      const result = await signIn(email, password)
+      if (result.mfaRequired) {
+        navigate('/auth/2fa')
+      } else {
+        navigate('/')
+      }
     } catch (err) {
       setError(err.message || t('error'))
     } finally {
@@ -80,11 +81,12 @@ export default function LoginPage() {
         const profile = await res.json()
         // Show confirmation modal — don't sign in yet
         setPendingProfile({
-          name:     profile.name,
-          email:    profile.email,
-          avatar:   profile.picture,
-          provider: 'google',
-          raw:      profile,
+          name:        profile.name,
+          email:       profile.email,
+          avatar:      profile.picture,
+          provider:    'google',
+          raw:         profile,
+          accessToken: tokenResponse.access_token,
         })
       } catch (err) {
         setError(err.message || 'Google sign-in failed')
@@ -120,11 +122,12 @@ export default function LoginPage() {
       })
       // Show confirmation modal
       setPendingProfile({
-        name:     profileData.name,
-        email:    profileData.email || '',
-        avatar:   profileData.picture?.data?.url || null,
-        provider: 'facebook',
-        raw:      { id: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
+        name:          profileData.name,
+        email:         profileData.email || '',
+        avatar:        profileData.picture?.data?.url || null,
+        provider:      'facebook',
+        fbAccessToken: authResponse.accessToken,
+        raw:           { id: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
       })
     } catch (err) {
       setError(err.message || 'Facebook sign-in failed.')
@@ -139,15 +142,11 @@ export default function LoginPage() {
     setLoading(true)
     try {
       if (pendingProfile.provider === 'google') {
-        await signInWithGoogle(pendingProfile.raw)
+        await signInWithGoogle(pendingProfile.accessToken, pendingProfile.raw)
       } else {
-        await signInWithFacebook(pendingProfile.raw)
+        await signInWithFacebook(pendingProfile.fbAccessToken, pendingProfile.raw)
       }
-      const email = pendingProfile.email
-      const token = await sendLoginCode(email)
-      sessionStorage.setItem('bb-2fa-token', token)
-      sessionStorage.setItem('bb-2fa-email', email)
-      navigate('/auth/2fa')
+      navigate('/')
     } catch (err) {
       setError(err.message || 'Sign-in failed')
     } finally {

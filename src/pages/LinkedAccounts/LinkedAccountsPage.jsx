@@ -84,7 +84,7 @@ function AccountCard({ account }) {
             {account.mask && <span style={{color: 'var(--text-muted)', fontWeight: 400}}> ••{account.mask}</span>}
           </p>
           <p style={{fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'capitalize'}}>
-            {account.institution?.name} · {account.subtype || account.type}
+            {account.institution?.name || account.institutionName} · {account.subtype || account.type}
           </p>
         </div>
         <div style={{textAlign: 'right', flexShrink: 0}}>
@@ -111,7 +111,7 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const added = await onSync(item.item_id)
+      const added = await onSync()
       setNewCount(added.length)
       setTimeout(() => setNewCount(null), 4000)
     } finally {
@@ -128,10 +128,10 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '1.1rem', color: 'white', fontWeight: 800, flexShrink: 0,
         }}>
-          {item.institution?.name?.[0] || '🏦'}
+          {item.institutionName?.[0] || '🏦'}
         </div>
         <div style={{flex: 1}}>
-          <p style={{fontWeight: 700, fontSize: '0.95rem'}}>{item.institution?.name || 'Bank'}</p>
+          <p style={{fontWeight: 700, fontSize: '0.95rem'}}>{item.institutionName || 'Bank'}</p>
           {item.lastRefreshed && (
             <p style={{fontSize: '0.72rem', color: 'var(--text-muted)'}}>
               {t('lastUpdated')}: {new Date(item.lastRefreshed).toLocaleTimeString('en-US', {hour: '2-digit', minute: '2-digit'})}
@@ -151,7 +151,7 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
             {syncing ? '⟳' : newCount !== null ? `+${newCount} new` : t('sync')}
           </button>
           <button
-            onClick={() => onRemove(item.item_id)}
+            onClick={() => onRemove(item.itemId)}
             style={{
               padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--border)',
               background: 'var(--bg-input)', cursor: 'pointer', fontSize: '0.8rem',
@@ -163,8 +163,8 @@ function InstitutionGroup({ item, onRemove, onRefresh, onSync }) {
         </div>
       </div>
 
-      {item.accounts.map(account => (
-        <AccountCard key={account.account_id} account={{...account, institution: item.institution}} />
+      {(item.accounts || []).map(account => (
+        <AccountCard key={account.account_id || account.accountId} account={{...account, institutionName: item.institutionName}} />
       ))}
     </div>
   )
@@ -299,7 +299,7 @@ export default function LinkedAccountsPage() {
               {new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'}).format(totalBankBalance)}
             </h1>
             <p style={{color: 'rgba(255,255,255,0.65)', fontSize: '0.82rem'}}>
-              {items.reduce((s, i) => s + i.accounts.length, 0)} {t('accountsLinked')} · {items.length} {t('banks')}
+              {items.reduce((s, i) => s + (i.accounts || []).length, 0)} {t('accountsLinked')} · {items.length} {t('banks')}
             </p>
           </div>
         )}
@@ -341,7 +341,7 @@ export default function LinkedAccountsPage() {
         {/* Institution groups */}
         {items.map(item => (
           <InstitutionGroup
-            key={item.item_id}
+            key={item.itemId}
             item={item}
             onRemove={removeItem}
             onRefresh={refreshAccounts}

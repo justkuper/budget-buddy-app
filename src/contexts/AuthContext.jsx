@@ -2,6 +2,28 @@ import { createContext, useContext, useEffect, useState } from 'react'
 
 const AuthContext = createContext()
 
+const API_BASE = import.meta.env.VITE_API_URL || ''
+
+async function authPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`)
+  return data
+}
+
+function decodeJwt(token) {
+  try {
+    const payload = token.split('.')[1]
+    return JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+  } catch {
+    return {}
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -20,110 +42,120 @@ export function AuthProvider({ children }) {
     localStorage.setItem('bb-session', JSON.stringify(u))
   }
 
-  // --- Email/Password Sign In ---
+  // Returns the stored JWT for use in API calls
+  const getToken = () => user?.accessToken || null
+
+  // ── Email / Password ────────────────────────────────────────────────────────
   const signIn = async (email, password) => {
-    if (email && password) {
-      const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
-      persist({
-        userId: existing?.userId || email,
-        email: existing?.email || email,
-        name: existing?.name || email.split('@')[0],
-        avatar: existing?.avatar || null,
-        providers: existing?.providers || {},
-      })
-      return { mfaRequired: false }
+    const data = await authPost('/auth/login', { email, password })
+
+    if (data.challenge) {
+      // Cognito TOTP MFA required
+      sessionStorage.setItem('bb-mfa-session', data.session)
+      sessionStorage.setItem('bb-mfa-email', email)
+      return { mfaRequired: true, session: data.session }
     }
-    throw new Error('Invalid credentials')
+
+    const payload = decodeJwt(data.idToken || data.accessToken)
+    persist({
+      userId:       payload.sub || email,
+      email:        payload.email || email,
+      name:         payload.name || email.split('@')[0],
+      avatar:       null,
+      accessToken:  data.accessToken,
+      refreshToken: data.refreshToken,
+      providers:    user?.providers || {},
+    })
+    return { mfaRequired: false }
   }
 
-  // --- Google Sign In (initial login) ---
-  const signInWithGoogle = async (googleProfile) => {
-    const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
+  // ── Google ──────────────────────────────────────────────────────────────────
+  // token = Google access_token (from useGoogleLogin) or id_token (from GoogleLogin)
+  const signInWithGoogle = async (token, profile) => {
+    const data = await authPost('/auth/social', { provider: 'google', token })
     persist({
-      userId: existing?.userId || googleProfile.sub,
-      email: existing?.email || googleProfile.email,
-      name: existing?.name || googleProfile.name,
-      avatar: existing?.avatar || googleProfile.picture,
+      userId:       data.userId || profile?.sub || profile?.id,
+      email:        profile?.email || '',
+      name:         profile?.name  || '',
+      avatar:       profile?.picture || null,
+      accessToken:  data.accessToken,
+      refreshToken: data.refreshToken,
       providers: {
-        ...(existing?.providers || {}),
-        google: {
-          sub: googleProfile.sub,
-          email: googleProfile.email,
-          name: googleProfile.name,
-          picture: googleProfile.picture,
-        },
+        ...(user?.providers || {}),
+        google: { email: profile?.email, name: profile?.name, picture: profile?.picture },
       },
     })
   }
 
-  // --- Facebook Sign In (initial login) ---
-  const signInWithFacebook = async (fbProfile) => {
-    const existing = JSON.parse(localStorage.getItem('bb-session') || 'null')
+  // ── Facebook ────────────────────────────────────────────────────────────────
+  const signInWithFacebook = async (accessToken, profile) => {
+    const data = await authPost('/auth/social', { provider: 'facebook', token: accessToken })
     persist({
-      userId: existing?.userId || `fb-${fbProfile.id}`,
-      email: existing?.email || fbProfile.email || '',
-      name: existing?.name || fbProfile.name,
-      avatar: existing?.avatar || fbProfile.picture || null,
+      userId:       data.userId || `fb-${profile?.id}`,
+      email:        profile?.email || '',
+      name:         profile?.name  || '',
+      avatar:       profile?.picture || null,
+      accessToken:  data.accessToken,
+      refreshToken: data.refreshToken,
       providers: {
-        ...(existing?.providers || {}),
-        facebook: {
-          id: fbProfile.id,
-          email: fbProfile.email || '',
-          name: fbProfile.name,
-          picture: fbProfile.picture || null,
-        },
+        ...(user?.providers || {}),
+        facebook: { id: profile?.id, email: profile?.email, picture: profile?.picture },
       },
     })
   }
 
-  // --- Link Google to existing account ---
+  // ── Link social to existing account ────────────────────────────────────────
   const linkGoogle = async (googleProfile) => {
-    const updated = {
+    persist({
       ...user,
       providers: {
         ...(user?.providers || {}),
-        google: {
-          sub: googleProfile.sub,
-          email: googleProfile.email,
-          name: googleProfile.name,
-          picture: googleProfile.picture,
-        },
+        google: { sub: googleProfile.sub, email: googleProfile.email, name: googleProfile.name, picture: googleProfile.picture },
       },
-    }
-    persist(updated)
+    })
   }
 
-  // --- Link Facebook to existing account ---
   const linkFacebook = async (fbProfile) => {
-    const updated = {
+    persist({
       ...user,
       providers: {
         ...(user?.providers || {}),
-        facebook: {
-          id: fbProfile.id,
-          email: fbProfile.email || '',
-          name: fbProfile.name,
-          picture: fbProfile.picture || null,
-        },
+        facebook: { id: fbProfile.id, email: fbProfile.email || '', name: fbProfile.name, picture: fbProfile.picture || null },
       },
-    }
-    persist(updated)
+    })
   }
 
-  // --- Unlink a provider ---
   const unlinkProvider = (provider) => {
     const providers = { ...(user?.providers || {}) }
     delete providers[provider]
     persist({ ...user, providers })
   }
 
-  // --- Update profile (name, email, avatar) ---
-  const updateProfile = (updates) => {
-    persist({ ...user, ...updates })
-  }
+  const updateProfile = (updates) => persist({ ...user, ...updates })
 
-  // --- 2FA ---
+  // ── MFA (TOTP confirm) ──────────────────────────────────────────────────────
   const confirmMFA = async (code) => {
+    const email   = sessionStorage.getItem('bb-mfa-email')
+    const session = sessionStorage.getItem('bb-mfa-session')
+    if (session && email) {
+      // Cognito TOTP
+      const data = await authPost('/auth/login/mfa', { email, totpCode: code, session })
+      const payload = decodeJwt(data.idToken || data.accessToken)
+      persist({
+        userId:       payload.sub || user?.userId,
+        email:        payload.email || user?.email,
+        name:         user?.name || payload.email?.split('@')[0] || '',
+        avatar:       user?.avatar || null,
+        accessToken:  data.accessToken,
+        refreshToken: data.refreshToken,
+        providers:    user?.providers || {},
+      })
+      sessionStorage.removeItem('bb-mfa-session')
+      sessionStorage.removeItem('bb-mfa-email')
+      setMfaPending(false)
+      return true
+    }
+    // Fallback: email OTP (legacy)
     if (code.length === 6) {
       const current = user || JSON.parse(localStorage.getItem('bb-session') || '{}')
       persist(current)
@@ -133,13 +165,20 @@ export function AuthProvider({ children }) {
     throw new Error('Invalid code')
   }
 
-  // --- Sign Up ---
   const signUp = async (email, password) => {
-    return { nextStep: 'DONE' }
+    await authPost('/auth/register', { email, password })
+    return { nextStep: 'CONFIRM_EMAIL' }
   }
 
-  // --- Sign Out ---
-  const signOut = () => {
+  const signOut = async () => {
+    if (user?.accessToken) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.accessToken}` },
+        })
+      } catch { /* ignore — clear local session regardless */ }
+    }
     setUser(null)
     setMfaPending(false)
     localStorage.removeItem('bb-session')
@@ -148,6 +187,7 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={{
       user, loading, mfaPending,
+      getToken,
       signIn, signInWithGoogle, signInWithFacebook,
       linkGoogle, linkFacebook, unlinkProvider,
       updateProfile,
