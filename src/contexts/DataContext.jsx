@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from 'uuid'
 
 const DataContext = createContext()
 
-// Bump this version any time you need to wipe old cached data
 const DATA_VERSION = '2'
 
 const CATEGORIES = {
@@ -19,15 +18,10 @@ const CATEGORIES = {
   other:         { label: 'other',         icon: '📦', color: '#A8A4CE' },
 }
 
-const EMPTY_STATE = {
-  transactions: [],
-  budgets: [],
-  bills: [],
-}
+const EMPTY_STATE = { transactions: [], budgets: [], bills: [] }
 
 function loadState() {
   try {
-    // If the stored version doesn't match, wipe old data (removes seed data for existing users)
     const storedVersion = localStorage.getItem('bb-data-version')
     if (storedVersion !== DATA_VERSION) {
       localStorage.removeItem('bb-data')
@@ -44,24 +38,36 @@ function reducer(state, action) {
   switch (action.type) {
     case 'ADD_TRANSACTION':
       return { ...state, transactions: [action.payload, ...state.transactions] }
+
     case 'DELETE_TRANSACTION':
       return { ...state, transactions: state.transactions.filter(t => t.id !== action.id) }
+
     case 'IMPORT_TRANSACTIONS': {
-      // Merge Plaid transactions — skip any already present by id
-      const existingIds = new Set(state.transactions.map(t => t.id))
-      const newOnes = action.payload.filter(t => !existingIds.has(t.id))
-      return { ...state, transactions: [...newOnes, ...state.transactions] }
+      // Upsert: add new, update existing by ID (handles Plaid modified)
+      const incoming = action.payload
+      const incomingIds = new Set(incoming.map(t => t.id))
+      const kept = state.transactions.filter(t => !incomingIds.has(t.id))
+      return { ...state, transactions: [...incoming, ...kept] }
     }
+
+    case 'REMOVE_TRANSACTIONS': {
+      // Remove a list of IDs (handles Plaid removed)
+      const ids = new Set(action.ids)
+      return { ...state, transactions: state.transactions.filter(t => !ids.has(t.id)) }
+    }
+
     case 'ADD_BUDGET':
       return { ...state, budgets: [...state.budgets, action.payload] }
     case 'DELETE_BUDGET':
       return { ...state, budgets: state.budgets.filter(b => b.id !== action.id) }
+
     case 'ADD_BILL':
       return { ...state, bills: [...state.bills, action.payload] }
     case 'DELETE_BILL':
       return { ...state, bills: state.bills.filter(b => b.id !== action.id) }
     case 'TOGGLE_BILL_PAID':
       return { ...state, bills: state.bills.map(b => b.id === action.id ? { ...b, paid: !b.paid } : b) }
+
     default:
       return state
   }
@@ -74,26 +80,17 @@ export function DataProvider({ children }) {
     localStorage.setItem('bb-data', JSON.stringify(state))
   }, [state])
 
-  const addTransaction = (tx) =>
-    dispatch({ type: 'ADD_TRANSACTION', payload: { ...tx, id: uuidv4() } })
+  const addTransaction    = (tx)  => dispatch({ type: 'ADD_TRANSACTION',    payload: { ...tx, id: uuidv4() } })
+  const deleteTransaction = (id)  => dispatch({ type: 'DELETE_TRANSACTION', id })
+  const importTransactions= (txs) => dispatch({ type: 'IMPORT_TRANSACTIONS', payload: txs })
+  const removeTransactions= (ids) => dispatch({ type: 'REMOVE_TRANSACTIONS', ids })
 
-  const deleteTransaction = (id) => dispatch({ type: 'DELETE_TRANSACTION', id })
+  const addBudget    = (b)  => dispatch({ type: 'ADD_BUDGET',       payload: { ...b, id: uuidv4() } })
+  const deleteBudget = (id) => dispatch({ type: 'DELETE_BUDGET',    id })
 
-  // Called after Plaid sync — merges bank transactions without duplicates
-  const importTransactions = (txList) =>
-    dispatch({ type: 'IMPORT_TRANSACTIONS', payload: txList })
-
-  const addBudget = (b) =>
-    dispatch({ type: 'ADD_BUDGET', payload: { ...b, id: uuidv4() } })
-
-  const deleteBudget = (id) => dispatch({ type: 'DELETE_BUDGET', id })
-
-  const addBill = (bill) =>
-    dispatch({ type: 'ADD_BILL', payload: { ...bill, id: uuidv4(), paid: false } })
-
-  const deleteBill = (id) => dispatch({ type: 'DELETE_BILL', id })
-
-  const toggleBillPaid = (id) => dispatch({ type: 'TOGGLE_BILL_PAID', id })
+  const addBill       = (bill) => dispatch({ type: 'ADD_BILL',        payload: { ...bill, id: uuidv4(), paid: false } })
+  const deleteBill    = (id)   => dispatch({ type: 'DELETE_BILL',     id })
+  const toggleBillPaid= (id)   => dispatch({ type: 'TOGGLE_BILL_PAID',id })
 
   // Derived totals (this month only)
   const now = new Date()
@@ -116,7 +113,7 @@ export function DataProvider({ children }) {
       monthlyIncome,
       monthlyExpenses,
       spendingByCategory,
-      addTransaction, deleteTransaction, importTransactions,
+      addTransaction, deleteTransaction, importTransactions, removeTransactions,
       addBudget, deleteBudget,
       addBill, deleteBill, toggleBillPaid,
     }}>

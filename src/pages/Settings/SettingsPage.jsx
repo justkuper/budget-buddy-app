@@ -167,6 +167,31 @@ export default function SettingsPage() {
   const [editEmail, setEditEmail] = useState(user?.email || '')
   const [editAvatar,setEditAvatar]= useState(user?.avatar|| '')
 
+  const [notifEnabled, setNotifEnabled] = useState(
+    () => localStorage.getItem('bb-notif-enabled') !== 'false'
+  )
+  const handleNotifToggle = () => {
+    setNotifEnabled(v => {
+      localStorage.setItem('bb-notif-enabled', String(!v))
+      return !v
+    })
+  }
+
+  const CURRENCIES = [
+    { code: 'USD', symbol: '$', label: 'USD $' },
+    { code: 'EUR', symbol: '€', label: 'EUR €' },
+    { code: 'GBP', symbol: '£', label: 'GBP £' },
+    { code: 'CAD', symbol: '$', label: 'CAD $' },
+    { code: 'MXN', symbol: '$', label: 'MXN $' },
+  ]
+  const [currency, setCurrency] = useState(
+    () => localStorage.getItem('bb-currency') || 'USD'
+  )
+  const handleCurrencyChange = (code) => {
+    setCurrency(code)
+    localStorage.setItem('bb-currency', code)
+  }
+
   const handleSignOut = () => {
     signOut()
     navigate('/auth/login')
@@ -327,7 +352,19 @@ export default function SettingsPage() {
           <TwoFARow navigate={navigate} user={user} />
 
           <SettingRow icon="💵" label={t('currency')}>
-            <span style={{color:'var(--text-secondary)', fontWeight:600}}>USD $</span>
+            <select
+              value={currency}
+              onChange={e => handleCurrencyChange(e.target.value)}
+              style={{
+                padding:'6px 10px', borderRadius:8, border:'1.5px solid var(--border)',
+                background:'var(--bg-input)', color:'var(--text-primary)',
+                fontWeight:600, fontSize:'0.85rem', cursor:'pointer',
+              }}
+            >
+              {CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
           </SettingRow>
         </div>
 
@@ -407,7 +444,7 @@ export default function SettingsPage() {
         <div className="card" style={{marginTop:16}}>
           <SettingRow icon="🔔" label={t('notifications')}>
             <label className="switch">
-              <input type="checkbox" defaultChecked />
+              <input type="checkbox" checked={notifEnabled} onChange={handleNotifToggle} />
               <span className="switch-slider" />
             </label>
           </SettingRow>

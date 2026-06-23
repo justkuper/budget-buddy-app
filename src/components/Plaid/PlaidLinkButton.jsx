@@ -6,8 +6,14 @@ import { useTranslation } from 'react-i18next'
 /**
  * Button that opens the Plaid Link UI.
  * Fetches a link_token from our backend, then initialises usePlaidLink.
+ *
+ * Props:
+ *   onSuccess  – called after a successful link
+ *   style      – optional style overrides for the button
+ *   autoOpen   – when truthy (and changes value), opens Plaid Link automatically
+ *   children   – button label
  */
-export default function PlaidLinkButton({ onSuccess, style = {}, children }) {
+export default function PlaidLinkButton({ onSuccess, style = {}, autoOpen, children }) {
   const { t } = useTranslation()
   const { getLinkToken, onPlaidSuccess, loading } = usePlaid()
   const [linkToken, setLinkToken] = useState(null)
@@ -31,9 +37,16 @@ export default function PlaidLinkButton({ onSuccess, style = {}, children }) {
     token: linkToken,
     onSuccess: handleSuccess,
     onExit: (err) => {
-      if (err) console.warn('Plaid Link exited with error:', err)
+      // err is already surfaced in Plaid Link UI; no action needed here
     },
   })
+
+  // Auto-open when triggered by bank picker selection
+  useEffect(() => {
+    if (autoOpen && ready) {
+      open()
+    }
+  }, [autoOpen, ready, open])
 
   if (tokenError) {
     return (

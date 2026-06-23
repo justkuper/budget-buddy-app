@@ -20,12 +20,13 @@ function formatCurrency(amount) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0 }).format(amount)
 }
 
-function formatDate(iso) {
+function formatDate(iso, t) {
   const d = new Date(iso)
   const today = new Date()
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1)
-  if (d.toDateString() === today.toDateString()) return 'Today'
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (d.toDateString() === today.toDateString())     return t('today')
+  if (d.toDateString() === yesterday.toDateString()) return t('yesterday')
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -33,19 +34,26 @@ export default function DashboardPage() {
   const { t } = useTranslation()
   const { user } = useAuth()
   const { transactions, categories, monthlyIncome, monthlyExpenses, spendingByCategory } = useData()
-  const { allAccounts, totalBankBalance, items } = usePlaid()
+  const { allAccounts, totalBankBalance } = usePlaid()
   const navigate = useNavigate()
   const [showAdd, setShowAdd] = useState(false)
 
-  const balance = monthlyIncome - monthlyExpenses
-  const recent = transactions.slice(0, 5)
+  const monthlySavings = monthlyIncome - monthlyExpenses
 
-  const pieData = Object.entries(spendingByCategory).map(([key, value]) => ({
-    name: key,
-    value,
-    color: categories[key]?.color || '#A8A4CE',
-    icon: categories[key]?.icon || '📦',
-  })).sort((a, b) => b.value - a.value).slice(0, 5)
+  // Sort by date descending, take 5 most recent
+  const recent = [...transactions]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5)
+
+  const pieData = Object.entries(spendingByCategory)
+    .map(([key, value]) => ({
+      name: key,
+      value,
+      color: categories[key]?.color || '#A8A4CE',
+      icon: categories[key]?.icon || '📦',
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 5)
 
   return (
     <div className="dashboard">
@@ -59,8 +67,8 @@ export default function DashboardPage() {
 
         {/* Balance Card */}
         <div className="balance-card card-gradient">
-          <p className="balance-label">{t('totalBalance')}</p>
-          <h1 className="balance-amount">{formatCurrency(balance)}</h1>
+          <p className="balance-label">{t('savings')}</p>
+          <h1 className="balance-amount">{formatCurrency(monthlySavings)}</h1>
           <div className="balance-row">
             <div className="balance-stat">
               <span className="stat-icon income">↑</span>
@@ -84,7 +92,7 @@ export default function DashboardPage() {
         {allAccounts.length > 0 && (
           <div
             className="card"
-            style={{marginTop: 16, cursor: 'pointer', display:'flex', alignItems:'center', gap:12, padding:'14px 16px'}}
+            style={{marginTop:16, cursor:'pointer', display:'flex', alignItems:'center', gap:12, padding:'14px 16px'}}
             onClick={() => navigate('/linked-accounts')}
           >
             <span style={{fontSize:'1.4rem'}}>🏦</span>
@@ -102,7 +110,7 @@ export default function DashboardPage() {
 
         {/* Spending by Category Donut */}
         {pieData.length > 0 && (
-          <div className="card" style={{marginTop: 20}}>
+          <div className="card" style={{marginTop:20}}>
             <div className="section-header">
               <h3>{t('spendingOverview')}</h3>
             </div>
@@ -138,12 +146,12 @@ export default function DashboardPage() {
         )}
 
         {/* Recent Transactions */}
-        <div style={{marginTop: 20}}>
+        <div style={{marginTop:20}}>
           <div className="section-header">
             <h3>{t('recentTransactions')}</h3>
             <button className="btn btn-ghost" onClick={() => navigate('/transactions')}>{t('viewAll')} →</button>
           </div>
-          <div className="card" style={{padding: 0, overflow: 'hidden'}}>
+          <div className="card" style={{padding:0, overflow:'hidden'}}>
             {recent.length === 0 ? (
               <div className="empty-state">
                 <div className="empty-icon">💸</div>
@@ -153,11 +161,13 @@ export default function DashboardPage() {
               recent.map((tx, i) => (
                 <div key={tx.id} className={`tx-row ${i < recent.length - 1 ? 'tx-row-border' : ''}`}>
                   <div className="tx-icon" style={{background: categories[tx.category]?.color + '25'}}>
-                    {categories[tx.category]?.icon}
+                    {tx.logo_url
+                      ? <img src={tx.logo_url} alt="" style={{width:28, height:28, borderRadius:6, objectFit:'contain'}} />
+                      : categories[tx.category]?.icon}
                   </div>
                   <div className="tx-info">
                     <p className="tx-desc">{tx.description}</p>
-                    <p className="tx-date">{formatDate(tx.date)}</p>
+                    <p className="tx-date">{formatDate(tx.date, t)}</p>
                   </div>
                   <p className={`tx-amount ${tx.type === 'income' ? 'amount-income' : 'amount-expense'}`}>
                     {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
@@ -169,7 +179,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* FAB */}
       <button className="fab" onClick={() => setShowAdd(true)}>+</button>
 
       {showAdd && <TransactionSheet onClose={() => setShowAdd(false)} />}

@@ -3,9 +3,6 @@ import { useAuth } from './AuthContext'
 
 const PlaidContext = createContext()
 
-// ── API helpers ────────────────────────────────────────────────────────────────
-// VITE_API_URL = your API Gateway base URL (e.g. https://abc123.execute-api.us-east-1.amazonaws.com/prod)
-// Leave blank in .env for local dev — Vite proxy will forward /api/* to local functions
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
 const API = async (path, body) => {
@@ -19,7 +16,6 @@ const API = async (path, body) => {
   return data
 }
 
-// ── Reducer ───────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
     case 'ADD_ITEM':
@@ -41,14 +37,25 @@ function reducer(state, action) {
       }
     case 'REMOVE_ITEM':
       return { ...state, items: state.items.filter(i => i.item_id !== action.item_id) }
-    case 'ADD_PLAID_TRANSACTIONS': {
-      const existing = state.plaidTransactions.filter(t => !action.added.find(a => a.id === t.id))
+
+    case 'SYNC_TRANSACTIONS': {
+      // Upsert added+modified into plaidTransactions; remove deleted ones
+      const { added, modified, removed, item_id, next_cursor } = action
+      const removedIds = new Set(removed)
+      const upserted = [...added, ...modified]
+      const upsertedIds = new Set(upserted.map(t => t.id))
+
+      const existing = state.plaidTransactions.filter(
+        t => !removedIds.has(t.id) && !upsertedIds.has(t.id)
+      )
       return {
         ...state,
-        plaidTransactions: [...existing, ...action.added],
-        cursors: { ...state.cursors, [action.item_id]: action.next_cursor },
+        plaidTransactions: [...upserted, ...existing],
+        removedPlaidIds: removed,   // surface to bridge for DataContext cleanup
+        cursors: { ...state.cursors, [item_id]: next_cursor },
       }
     }
+
     case 'SET_LOADING':
       return { ...state, loading: action.value }
     case 'SET_ERROR':
@@ -63,20 +70,18 @@ function loadState() {
     const raw = localStorage.getItem('bb-plaid')
     if (raw) return JSON.parse(raw)
   } catch {}
-  return { items: [], plaidTransactions: [], cursors: {}, loading: false, error: null }
+  return { items: [], plaidTransactions: [], removedPlaidIds: [], cursors: {}, loading: false, error: null }
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
 export function PlaidProvider({ children }) {
   const { user } = useAuth()
   const [state, dispatch] = useReducer(reducer, null, loadState)
 
   useEffect(() => {
-    const { loading, error, ...persisted } = state
+    const { loading, error, removedPlaidIds, ...persisted } = state
     localStorage.setItem('bb-plaid', JSON.stringify(persisted))
   }, [state])
 
-  // Get a link token from our backend
   const getLinkToken = useCallback(async () => {
     dispatch({ type: 'SET_LOADING', value: true })
     try {
@@ -87,7 +92,6 @@ export function PlaidProvider({ children }) {
     }
   }, [user])
 
-  // Called by Plaid Link onSuccess — exchanges token and stores item
   const onPlaidSuccess = useCallback(async (public_token, metadata) => {
     dispatch({ type: 'SET_LOADING', value: true })
     dispatch({ type: 'SET_ERROR', message: null })
@@ -97,7 +101,6 @@ export function PlaidProvider({ children }) {
         institution: metadata.institution,
         userId: user?.userId || 'demo-user',
       })
-      // Store access_token in the item (demo only — use a DB in production)
       dispatch({
         type: 'ADD_ITEM',
         payload: {
@@ -108,7 +111,6 @@ export function PlaidProvider({ children }) {
           lastRefreshed: new Date().toISOString(),
         },
       })
-      // Sync recent transactions right away
       await _syncTransactions(data.item_id, data.access_token, null)
     } catch (e) {
       dispatch({ type: 'SET_ERROR', message: e.message })
@@ -117,14 +119,15 @@ export function PlaidProvider({ children }) {
     }
   }, [user])
 
-  // Internal sync helper (uses access_token directly)
   const _syncTransactions = async (item_id, access_token, cursor) => {
     try {
       const data = await API('sync-transactions', { access_token, cursor })
       dispatch({
-        type: 'ADD_PLAID_TRANSACTIONS',
+        type: 'SYNC_TRANSACTIONS',
         item_id,
-        added: data.added,
+        added:       data.added,
+        modified:    data.modified || [],
+        removed:     data.removed  || [],
         next_cursor: data.next_cursor,
       })
       return data.added
@@ -134,7 +137,6 @@ export function PlaidProvider({ children }) {
     }
   }
 
-  // Public: refresh balances for a specific item
   const refreshAccounts = useCallback(async (item_id) => {
     const item = state.items.find(i => i.item_id === item_id)
     if (!item) return
@@ -146,7 +148,6 @@ export function PlaidProvider({ children }) {
     }
   }, [state.items])
 
-  // Public: sync new transactions for a specific item
   const syncTransactions = useCallback(async (item_id) => {
     const item = state.items.find(i => i.item_id === item_id)
     if (!item) return []
@@ -154,12 +155,10 @@ export function PlaidProvider({ children }) {
     return _syncTransactions(item_id, item.access_token, cursor)
   }, [state.items, state.cursors])
 
-  // Remove a linked bank
   const removeItem = useCallback((item_id) => {
     dispatch({ type: 'REMOVE_ITEM', item_id })
   }, [])
 
-  // Derived values
   const totalBankBalance = state.items.reduce((sum, item) =>
     sum + item.accounts.reduce((s, a) => s + (a.balances.current || 0), 0), 0)
 
@@ -172,6 +171,7 @@ export function PlaidProvider({ children }) {
       items: state.items,
       allAccounts,
       plaidTransactions: state.plaidTransactions,
+      removedPlaidIds: state.removedPlaidIds,
       totalBankBalance,
       loading: state.loading,
       error: state.error,

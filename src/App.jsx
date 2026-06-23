@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { useAuth } from './contexts/AuthContext'
 import BottomNav from './components/Layout/BottomNav'
 import Sidebar from './components/Layout/Sidebar'
+import PlaidSyncBridge from './components/PlaidSyncBridge'
 
 import LoginPage from './pages/Auth/LoginPage'
 import SignupPage from './pages/Auth/SignupPage'
@@ -37,13 +38,11 @@ function PrivateRoute({ children }) {
 
 const AppRoutes = () => (
   <Routes>
-    {/* Auth */}
     <Route path="/auth/login"     element={<LoginPage />} />
     <Route path="/auth/signup"    element={<SignupPage />} />
     <Route path="/auth/2fa"       element={<TwoFactorPage />} />
     <Route path="/auth/2fa-setup" element={<TwoFactorPage isSetup />} />
 
-    {/* App */}
     <Route path="/"                element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
     <Route path="/transactions"    element={<PrivateRoute><TransactionsPage /></PrivateRoute>} />
     <Route path="/budget"          element={<PrivateRoute><BudgetPage /></PrivateRoute>} />
@@ -52,12 +51,10 @@ const AppRoutes = () => (
     <Route path="/linked-accounts" element={<PrivateRoute><LinkedAccountsPage /></PrivateRoute>} />
     <Route path="/settings"        element={<PrivateRoute><SettingsPage /></PrivateRoute>} />
 
-    {/* Legal — public, no auth required */}
     <Route path="/terms"         element={<TermsPage />} />
     <Route path="/privacy"       element={<PrivacyPage />} />
     <Route path="/data-deletion" element={<DataDeletionPage />} />
 
-    {/* Fallback */}
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 )
@@ -77,12 +74,8 @@ function AppLayout() {
     })
   }
 
-  // Auth pages: full-screen, no nav
-  if (isAuth) {
-    return <AppRoutes />
-  }
+  if (isAuth) return <AppRoutes />
 
-  // Mobile: bottom nav
   if (!isDesktop) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -92,7 +85,6 @@ function AppLayout() {
     )
   }
 
-  // Desktop: sidebar + main
   return (
     <>
       <Sidebar mobileView={mobileView} onToggleMobileView={toggleMobileView} />
@@ -106,6 +98,8 @@ function AppLayout() {
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Keeps Plaid transactions in sync with DataContext across the whole app */}
+      <PlaidSyncBridge />
       <AppLayout />
     </BrowserRouter>
   )
