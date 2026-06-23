@@ -154,6 +154,12 @@
   border-color: var(--border);
 }
 
+.google-login-wrapper {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
 .btn-facebook {
   background: #1877F2;
   color: white;
