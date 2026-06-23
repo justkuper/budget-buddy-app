@@ -315,7 +315,7 @@ export default function LinkedAccountsPage() {
         )}
 
         {/* Empty state with bank picker */}
-        {items.length === 0 && !loading && (
+        {items.length === 0 && (
           <div style={{paddingTop: 24}}>
             <div style={{textAlign: 'center', marginBottom: 24}}>
               <div style={{fontSize: '2.8rem', marginBottom: 10}}>🏦</div>
