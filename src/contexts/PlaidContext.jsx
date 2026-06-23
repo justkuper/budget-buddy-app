@@ -66,11 +66,12 @@ function reducer(state, action) {
 }
 
 function loadState() {
+  const defaults = { items: [], plaidTransactions: [], removedPlaidIds: [], cursors: {}, loading: false, error: null }
   try {
     const raw = localStorage.getItem('bb-plaid')
-    if (raw) return JSON.parse(raw)
+    if (raw) return { ...defaults, ...JSON.parse(raw), removedPlaidIds: [], loading: false, error: null }
   } catch {}
-  return { items: [], plaidTransactions: [], removedPlaidIds: [], cursors: {}, loading: false, error: null }
+  return defaults
 }
 
 export function PlaidProvider({ children }) {

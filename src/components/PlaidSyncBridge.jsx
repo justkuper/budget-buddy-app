@@ -10,7 +10,7 @@ import { useData } from '../contexts/DataContext'
  * Render once inside App (inside both DataProvider and PlaidProvider).
  */
 export default function PlaidSyncBridge() {
-  const { plaidTransactions, removedPlaidIds } = usePlaid()
+  const { plaidTransactions = [], removedPlaidIds = [] } = usePlaid()
   const { importTransactions, removeTransactions } = useData()
 
   // Track what we've already synced to avoid redundant dispatches
