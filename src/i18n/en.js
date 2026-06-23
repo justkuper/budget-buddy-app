@@ -148,5 +148,8 @@ export default {
     today: 'Today',
     yesterday: 'Yesterday',
     noData: 'No data available',
+    deleteTransactionTitle: 'Delete transaction?',
+    deleteTransactionBody: 'This cannot be undone.',
+    sixMonthOverview: '6-Month Overview',
   }
 }

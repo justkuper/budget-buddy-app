@@ -103,7 +103,7 @@ export default function BillsPage() {
     addBill({
       name,
       amount: parseFloat(amount),
-      dueDate: new Date(dueDate).toISOString(),
+      dueDate: dueDate + 'T12:00:00',  // local noon avoids UTC day-shift in negative-offset timezones
       recurring,
       category,
     })

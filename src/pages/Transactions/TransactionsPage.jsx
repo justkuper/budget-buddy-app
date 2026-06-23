@@ -139,8 +139,8 @@ export default function TransactionsPage() {
         <div className="overlay" onClick={() => setConfirmDelete(null)}>
           <div className="sheet" style={{padding:24}}>
             <div className="sheet-handle" />
-            <p style={{fontWeight:700, marginBottom:8}}>Delete transaction?</p>
-            <p style={{color:'var(--text-secondary)', fontSize:'0.9rem', marginBottom:20}}>This cannot be undone.</p>
+            <p style={{fontWeight:700, marginBottom:8}}>{t('deleteTransactionTitle')}</p>
+            <p style={{color:'var(--text-secondary)', fontSize:'0.9rem', marginBottom:20}}>{t('deleteTransactionBody')}</p>
             <div style={{display:'flex', gap:10}}>
               <button className="btn btn-secondary" style={{flex:1}} onClick={() => setConfirmDelete(null)}>{t('cancel')}</button>
               <button className="btn btn-danger" style={{flex:1}} onClick={() => { deleteTransaction(confirmDelete); setConfirmDelete(null) }}>{t('delete')}</button>

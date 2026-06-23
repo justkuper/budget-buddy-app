@@ -99,7 +99,7 @@ export default function ReportsPage() {
 
         {/* 6-Month Bar Chart */}
         <div className="card" style={{marginBottom:20}}>
-          <h3 style={{marginBottom:16}}>6-Month Overview</h3>
+          <h3 style={{marginBottom:16}}>{t('sixMonthOverview')}</h3>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={trendData} barSize={14} barGap={3}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />

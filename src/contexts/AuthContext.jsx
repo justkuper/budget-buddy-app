@@ -32,7 +32,22 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const session = localStorage.getItem('bb-session')
     if (session) {
-      try { setUser(JSON.parse(session)) } catch {}
+      try {
+        const parsed = JSON.parse(session)
+        // Check if access token is expired before restoring session
+        if (parsed?.accessToken) {
+          const payload = decodeJwt(parsed.accessToken)
+          const exp = payload.exp
+          if (exp && Date.now() / 1000 > exp) {
+            // Token expired — clear stale session
+            localStorage.removeItem('bb-session')
+          } else {
+            setUser(parsed)
+          }
+        } else {
+          setUser(parsed)
+        }
+      } catch {}
     }
     setLoading(false)
   }, [])

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useReducer } from 'react'
+import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
 const DataContext = createContext()
@@ -92,17 +92,19 @@ export function DataProvider({ children }) {
   const deleteBill    = (id)   => dispatch({ type: 'DELETE_BILL',     id })
   const toggleBillPaid= (id)   => dispatch({ type: 'TOGGLE_BILL_PAID',id })
 
-  // Derived totals (this month only)
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const monthlyTransactions = state.transactions.filter(t => new Date(t.date) >= monthStart)
-  const monthlyIncome   = monthlyTransactions.filter(t => t.type === 'income').reduce((s, t)  => s + t.amount, 0)
-  const monthlyExpenses = monthlyTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-
-  const spendingByCategory = {}
-  monthlyTransactions.filter(t => t.type === 'expense').forEach(t => {
-    spendingByCategory[t.category] = (spendingByCategory[t.category] || 0) + t.amount
-  })
+  // Derived totals (this month only) — memoized to avoid recalculating on every render
+  const { monthlyIncome, monthlyExpenses, spendingByCategory } = useMemo(() => {
+    const now = new Date()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthlyTransactions = state.transactions.filter(t => new Date(t.date) >= monthStart)
+    const monthlyIncome   = monthlyTransactions.filter(t => t.type === 'income').reduce((s, t)  => s + t.amount, 0)
+    const monthlyExpenses = monthlyTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    const spendingByCategory = {}
+    monthlyTransactions.filter(t => t.type === 'expense').forEach(t => {
+      spendingByCategory[t.category] = (spendingByCategory[t.category] || 0) + t.amount
+    })
+    return { monthlyIncome, monthlyExpenses, spendingByCategory }
+  }, [state.transactions])
 
   return (
     <DataContext.Provider value={{

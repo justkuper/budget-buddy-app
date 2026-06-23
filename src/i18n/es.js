@@ -148,5 +148,8 @@ export default {
     today: 'Hoy',
     yesterday: 'Ayer',
     noData: 'Sin datos disponibles',
+    deleteTransactionTitle: '¿Eliminar transacción?',
+    deleteTransactionBody: 'Esta acción no se puede deshacer.',
+    sixMonthOverview: 'Resumen de 6 Meses',
   }
 }

@@ -8,18 +8,6 @@ import './Auth.css'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
-async function sendLoginCode(email) {
-  const res = await fetch(`${API_BASE}/api/send-2fa-code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ method: 'email', contact: email }),
-  })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Failed to send code')
-  return data.token
-}
-
-// Loads the Facebook JS SDK once and resolves when ready
 function loadFbSdk(appId) {
   return new Promise((resolve) => {
     if (window.FB) { resolve(window.FB); return }
@@ -45,22 +33,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
-
-  // Pending profile shown in "confirm sign-in" modal before actually signing in
   const [pendingProfile, setPendingProfile] = useState(null)
 
-  // ── Email / Password ──────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
     try {
       const result = await signIn(email, password)
-      if (result.mfaRequired) {
-        navigate('/auth/2fa')
-      } else {
-        navigate('/')
-      }
+      if (result.mfaRequired) navigate('/auth/2fa')
+      else navigate('/')
     } catch (err) {
       setError(err.message || t('error'))
     } finally {
@@ -68,9 +50,6 @@ export default function LoginPage() {
     }
   }
 
-  // ── Google OAuth ──────────────────────────────────────────────────────────
-  // GoogleLogin returns a credential which is an id_token (JWT).
-  // Decode the payload client-side to prefill the confirmation modal.
   const handleGoogleSuccess = (credentialResponse) => {
     setError('')
     try {
@@ -79,27 +58,20 @@ export default function LoginPage() {
       const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
       const payload = JSON.parse(atob(base64))
       setPendingProfile({
-        name:     payload.name,
-        email:    payload.email,
-        avatar:   payload.picture,
-        provider: 'google',
-        raw:      payload,
-        idToken:  credential,
+        name: payload.name, email: payload.email, avatar: payload.picture,
+        provider: 'google', raw: payload, idToken: credential,
       })
     } catch (err) {
       setError(err.message || 'Google sign-in failed')
     }
   }
 
-  // ── Facebook OAuth ────────────────────────────────────────────────────────
   const handleFacebook = async () => {
     setError('')
     setLoading(true)
     try {
       const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID
-      if (!FB_APP_ID) {
-        throw new Error('Facebook App ID not configured.')
-      }
+      if (!FB_APP_ID) throw new Error('Facebook App ID not configured.')
       const FB = await loadFbSdk(FB_APP_ID)
       const authResponse = await new Promise((resolve, reject) => {
         FB.login(
@@ -108,28 +80,24 @@ export default function LoginPage() {
         )
       })
       const profileData = await new Promise((resolve, reject) => {
-        FB.api(
-          '/me',
-          { fields: 'id,name,email,picture.type(large)', access_token: authResponse.accessToken },
+        FB.api('/me', { fields: 'id,name,email,picture.type(large)', access_token: authResponse.accessToken },
           (data) => data && !data.error ? resolve(data) : reject(new Error(data?.error?.message || 'Failed to fetch Facebook profile'))
         )
       })
       setPendingProfile({
-        name:          profileData.name,
-        email:         profileData.email || '',
-        avatar:        profileData.picture?.data?.url || null,
-        provider:      'facebook',
-        fbAccessToken: authResponse.accessToken,
-        raw:           { id: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
+        name: profileData.name, email: profileData.email || '',
+        avatar: profileData.picture?.data?.url || null,
+        provider: 'facebook', fbAccessToken: authResponse.accessToken,
+        raw: { id: profileData.id, name: profileData.name, email: profileData.email || '', picture: profileData.picture?.data?.url || null },
       })
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'SecurityError') return
       setError(err.message || 'Facebook sign-in failed.')
     } finally {
       setLoading(false)
     }
   }
 
-  // ── Confirm and complete sign-in ──────────────────────────────────────────
   const handleConfirmSignIn = async () => {
     if (!pendingProfile) return
     setLoading(true)
@@ -168,31 +136,18 @@ export default function LoginPage() {
 
       <div className="auth-card">
         <h2 className="auth-title">{t('welcome')}</h2>
-
         {error && <div className="auth-error">⚠️ {error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label className="form-label">{t('email')}</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="hello@example.com"
-              required
-              autoComplete="email"
-            />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="hello@example.com" required autoComplete="email" />
           </div>
           <div className="form-group">
             <label className="form-label">{t('password')}</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              autoComplete="current-password"
-            />
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••" required autoComplete="current-password" />
           </div>
           <div className="auth-forgot">
             <button type="button" className="btn btn-ghost" style={{padding:'4px 0', fontSize:'0.85rem'}}>
@@ -211,13 +166,9 @@ export default function LoginPage() {
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
               onError={() => setError('Google sign-in was cancelled or failed.')}
-              text="continue_with"
-              size="large"
-              shape="rectangular"
-              width="340"
+              text="continue_with" size="large" shape="rectangular" width="340"
             />
           </div>
-
           <button className="btn-social btn-facebook" onClick={handleFacebook} disabled={loading}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
               <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
@@ -234,12 +185,10 @@ export default function LoginPage() {
         </p>
       </div>
 
-      {/* ── Confirm sign-in modal ─────────────────────────────────────────── */}
       {pendingProfile && (
         <div className="overlay" onClick={() => !loading && setPendingProfile(null)}>
           <div className="sheet confirm-signin-sheet" onClick={e => e.stopPropagation()}>
             <div className="sheet-handle" />
-
             <div className="confirm-signin-provider">
               {pendingProfile.provider === 'google' ? (
                 <svg width="20" height="20" viewBox="0 0 18 18">
@@ -257,39 +206,22 @@ export default function LoginPage() {
                 Sign in with {pendingProfile.provider === 'google' ? 'Google' : 'Facebook'}
               </span>
             </div>
-
             <p style={{fontSize:'0.82rem', color:'var(--text-muted)', marginBottom:20, lineHeight:1.5}}>
               Budget Buddy will access your name, email address, and profile photo.
             </p>
-
             <div className="confirm-signin-profile">
               {pendingProfile.avatar
                 ? <img src={pendingProfile.avatar} alt="" className="confirm-signin-avatar" />
-                : <div className="confirm-signin-avatar confirm-signin-avatar-fallback">
-                    {(pendingProfile.name || 'U')[0]}
-                  </div>
+                : <div className="confirm-signin-avatar confirm-signin-avatar-fallback">{(pendingProfile.name || 'U')[0]}</div>
               }
               <div>
                 <p style={{fontWeight:700, fontSize:'1rem'}}>{pendingProfile.name}</p>
                 <p style={{fontSize:'0.85rem', color:'var(--text-muted)'}}>{pendingProfile.email}</p>
               </div>
             </div>
-
             <div style={{display:'flex', gap:10, marginTop:8}}>
-              <button
-                className="btn btn-secondary"
-                style={{flex:1}}
-                onClick={() => setPendingProfile(null)}
-                disabled={loading}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary"
-                style={{flex:2}}
-                onClick={handleConfirmSignIn}
-                disabled={loading}
-              >
+              <button className="btn btn-secondary" style={{flex:1}} onClick={() => setPendingProfile(null)} disabled={loading}>Cancel</button>
+              <button className="btn btn-primary" style={{flex:2}} onClick={handleConfirmSignIn} disabled={loading}>
                 {loading ? 'Signing in…' : 'Continue'}
               </button>
             </div>
