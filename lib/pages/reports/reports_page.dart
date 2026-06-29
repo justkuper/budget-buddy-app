@@ -186,7 +186,7 @@ class _ReportsPageState extends State<ReportsPage> {
   Widget _barChart(List<({String month, double income, double expenses})> trend, double maxBar, AppPalette p) {
     return BarChart(
       BarChartData(
-        maxY: maxBar == 0 ? 1 : maxBar * 1.2,
+        maxY: maxBar == 0 ? 1.0 : maxBar * 1.2,
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,

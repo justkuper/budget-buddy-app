@@ -96,7 +96,8 @@ class BudgetPage extends StatelessWidget {
 
     final totalBudget = budgets.fold<double>(0, (s, b) => s + b.limit);
     final totalSpent = budgets.fold<double>(0, (s, b) => s + (spending[b.category] ?? 0));
-    final overallFraction = totalBudget > 0 ? (totalSpent / totalBudget).clamp(0.0, 1.0) : 0.0;
+    final double overallFraction =
+        totalBudget > 0 ? (totalSpent / totalBudget).clamp(0.0, 1.0).toDouble() : 0.0;
 
     return Stack(
       children: [
@@ -181,7 +182,8 @@ class _BudgetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final p = AppPaletteScope.of(context);
     final cat = Categories.of(budget.category) ?? Categories.fallback;
-    final fraction = budget.limit > 0 ? (spent / budget.limit).clamp(0.0, 1.0) : 0.0;
+    final double fraction =
+        budget.limit > 0 ? (spent / budget.limit).clamp(0.0, 1.0).toDouble() : 0.0;
     final remaining = budget.limit - spent;
     final over = spent > budget.limit;
 

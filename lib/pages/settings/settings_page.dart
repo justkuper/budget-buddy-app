@@ -98,7 +98,7 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(ctx.t('disable2FADesc', {'email': email ?? ''}),
                 style: TextStyle(color: p.textMuted, fontSize: 13)),
             const SizedBox(height: 16),
-            if (err != null) AuthErrorInline(err),
+            if (err != null) AuthErrorInline(err!),
             TextField(
               controller: code,
               keyboardType: TextInputType.number,
