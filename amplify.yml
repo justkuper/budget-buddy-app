@@ -1,0 +1,28 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # Install the Flutter SDK (stable) into the build environment
+        - git clone https://github.com/flutter/flutter.git -b stable --depth 1 "$HOME/flutter"
+        - export PATH="$PATH:$HOME/flutter/bin"
+        - flutter --version
+        - flutter config --enable-web --no-analytics
+        # Generate the web platform folder (lib/ is untouched)
+        - flutter create . --platforms web
+        # Inject the Plaid Link web SDK
+        - grep -q 'cdn.plaid.com' web/index.html || sed -i 's#</head>#  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>\n</head>#' web/index.html
+        - flutter pub get
+    build:
+      commands:
+        - export PATH="$PATH:$HOME/flutter/bin"
+        # API_URL / GOOGLE_CLIENT_ID / FACEBOOK_APP_ID come from Amplify env vars.
+        # Unset ones resolve to empty strings (same-origin / social login disabled).
+        - flutter build web --release --dart-define=API_URL=$API_URL --dart-define=GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID --dart-define=FACEBOOK_APP_ID=$FACEBOOK_APP_ID
+  artifacts:
+    baseDirectory: build/web
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - $HOME/.pub-cache/**/*
